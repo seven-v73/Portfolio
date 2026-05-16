@@ -28,9 +28,7 @@ PORT=4000
 MONGODB_URI=mongodb://127.0.0.1:27017/portfolio
 CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 JWT_SECRET=replace-with-a-long-random-secret
-ADMIN_NAME=Portfolio Admin
-ADMIN_EMAIL=admin@portfolio.local
-ADMIN_PASSWORD=replace-with-a-strong-admin-password
+
 ```
 
 En production, `JWT_SECRET` et `ADMIN_PASSWORD` doivent etre remplaces par des valeurs fortes. Le serveur refuse les valeurs faibles par defaut quand `NODE_ENV=production`.
