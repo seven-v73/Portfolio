@@ -22,7 +22,11 @@ try {
 
   console.log("Admin account ready:");
   console.log(`Email: ${user.email}`);
-  console.log(`Password: ${config.adminPassword}`);
+  if (config.isProduction) {
+    console.log("Password: hidden in production");
+  } else {
+    console.log(`Password: ${config.adminPassword}`);
+  }
   process.exit(0);
 } catch (error) {
   console.error("Unable to seed admin account.");

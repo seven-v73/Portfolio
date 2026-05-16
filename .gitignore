@@ -6,3 +6,10 @@ vite.config.d.ts
 .DS_Store
 .env
 .mongo-data
+public/apks/*.apk
+public/project-logos/*
+public/project-screenshots/*
+public/profile-photo.*
+public/profile-manifest.json
+playwright-report
+test-results

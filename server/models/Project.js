@@ -22,6 +22,48 @@ const projectSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    detail: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    logoUrl: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    projectUrl: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    apkUrl: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    apkName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    screenshots: {
+      type: [
+        {
+          url: {
+            type: String,
+            required: true,
+            trim: true,
+          },
+          alt: {
+            type: String,
+            default: "",
+            trim: true,
+          },
+        },
+      ],
+      default: [],
+    },
     tags: {
       type: [String],
       default: [],
