@@ -1,13 +1,24 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
+import rateLimit from "express-rate-limit";
 import jwt from "jsonwebtoken";
 import { config } from "../config.js";
 import { requireAuth } from "../middleware/auth.js";
 import { User } from "../models/User.js";
 
 export const authRouter = Router();
+const sessionCookieName = "portfolio_admin_session";
+const sessionMaxAgeMs = 8 * 60 * 60 * 1000;
 
-authRouter.post("/login", asyncHandler(async (req, res) => {
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Trop de tentatives. Réessaie dans quelques minutes." },
+});
+
+authRouter.post("/login", loginLimiter, asyncHandler(async (req, res) => {
   const { email, password } = req.body || {};
 
   if (!email || !password) {
@@ -36,9 +47,9 @@ authRouter.post("/login", asyncHandler(async (req, res) => {
     config.jwtSecret,
     { expiresIn: "8h" },
   );
+  setSessionCookie(res, token);
 
   return res.json({
-    token,
     user: {
       id: user._id,
       name: user.name,
@@ -51,6 +62,30 @@ authRouter.post("/login", asyncHandler(async (req, res) => {
 authRouter.get("/me", requireAuth, asyncHandler(async (req, res) => {
   return res.json({ user: req.user });
 }));
+
+authRouter.post("/logout", (_req, res) => {
+  clearSessionCookie(res);
+  return res.status(204).send();
+});
+
+function setSessionCookie(res, token) {
+  res.cookie(sessionCookieName, token, {
+    httpOnly: true,
+    secure: config.isProduction,
+    sameSite: "strict",
+    maxAge: sessionMaxAgeMs,
+    path: "/",
+  });
+}
+
+function clearSessionCookie(res) {
+  res.clearCookie(sessionCookieName, {
+    httpOnly: true,
+    secure: config.isProduction,
+    sameSite: "strict",
+    path: "/",
+  });
+}
 
 function asyncHandler(handler) {
   return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);

@@ -19,6 +19,11 @@ const corsOrigins = (process.env.CORS_ORIGINS || "http://localhost:5173,http://1
   .map((origin) => origin.trim())
   .filter(Boolean);
 
+const githubProjectTopics = (process.env.GITHUB_PROJECT_TOPICS || "")
+  .split(",")
+  .map((topic) => topic.trim().toLowerCase())
+  .filter(Boolean);
+
 export const config = {
   isProduction,
   port: Number(process.env.PORT || 4000),
@@ -28,4 +33,8 @@ export const config = {
   adminName: process.env.ADMIN_NAME || "Portfolio Admin",
   adminEmail: process.env.ADMIN_EMAIL || "admin@portfolio.local",
   adminPassword: process.env.ADMIN_PASSWORD || defaultAdminPassword,
+  githubUsername: process.env.GITHUB_USERNAME || "seven-v73",
+  githubToken: process.env.GITHUB_TOKEN || "",
+  githubProjectTopics,
+  githubCacheTtlMs: Number(process.env.GITHUB_CACHE_TTL_MS || 15 * 60 * 1000),
 };

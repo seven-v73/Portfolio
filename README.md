@@ -6,9 +6,11 @@ Portfolio fullstack de Victoire SAWADOGO, construit avec React, TypeScript, Vite
 
 - Portfolio public responsive avec sections profil, parcours, stack, projets, labo, CV et contact.
 - Terminal interactif immersif pour explorer le profil et les projets.
-- Espace admin protege par JWT.
+- Espace admin protege par session JWT en cookie HTTP-only.
 - Edition du contenu principal et upload du CV public.
 - API Express avec validation des payloads via Zod.
+- Headers HTTP durcis avec Helmet et limitation des tentatives de connexion.
+- Synchronisation dynamique des realisations depuis GitHub.
 
 ## Installation
 
@@ -21,6 +23,10 @@ npm run dev
 
 Le client Vite tourne sur `http://localhost:5173` et l'API sur `http://localhost:4000`.
 
+Le contenu principal sauvegarde aussi les projets publics. L'endpoint `/api/projects`
+sert les projets du contenu principal et ajoute les repositories GitHub publics
+configures.
+
 ## Variables D'Environnement
 
 ```env
@@ -28,10 +34,30 @@ PORT=4000
 MONGODB_URI=mongodb://127.0.0.1:27017/portfolio
 CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 JWT_SECRET=replace-with-a-long-random-secret
+GITHUB_USERNAME=seven-v73
+GITHUB_TOKEN=
+GITHUB_PROJECT_TOPICS=
+GITHUB_CACHE_TTL_MS=900000
 
 ```
 
-En production, `JWT_SECRET` et `ADMIN_PASSWORD` doivent etre remplaces par des valeurs fortes. Le serveur refuse les valeurs faibles par defaut quand `NODE_ENV=production`.
+En production, `JWT_SECRET` et `ADMIN_PASSWORD` doivent etre remplaces par des valeurs fortes. Le serveur refuse les valeurs faibles par defaut quand `NODE_ENV=production`. La session admin est envoyee dans un cookie HTTP-only, `secure` en production.
+
+## Synchronisation GitHub
+
+Par defaut, le portfolio recupere les repositories publics non-fork et non archives
+du compte `GITHUB_USERNAME`, puis les fusionne avec les projets saisis dans
+l'espace admin. Les fiches admin restent prioritaires en cas de doublon.
+
+Pour afficher uniquement certains repositories, ajoute des topics sur GitHub puis
+renseigne par exemple:
+
+```env
+GITHUB_PROJECT_TOPICS=portfolio,featured,showcase
+```
+
+`GITHUB_TOKEN` est optionnel, mais recommande en production pour augmenter les
+limites de l'API GitHub. Le cache serveur est controle par `GITHUB_CACHE_TTL_MS`.
 
 ## Scripts
 

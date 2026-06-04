@@ -37,6 +37,34 @@ const projectSchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
+    githubUrl: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    githubRepo: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    githubUpdatedAt: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    githubStars: {
+      type: Number,
+      default: 0,
+    },
+    githubForks: {
+      type: Number,
+      default: 0,
+    },
+    source: {
+      type: String,
+      enum: ["manual", "github"],
+      default: "manual",
+    },
     apkUrl: {
       type: String,
       default: "",

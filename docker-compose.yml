@@ -21,6 +21,10 @@ services:
       ADMIN_NAME: ${ADMIN_NAME:-Portfolio Admin}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@portfolio.local}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
+      GITHUB_USERNAME: ${GITHUB_USERNAME:-seven-v73}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      GITHUB_PROJECT_TOPICS: ${GITHUB_PROJECT_TOPICS:-}
+      GITHUB_CACHE_TTL_MS: ${GITHUB_CACHE_TTL_MS:-900000}
     ports:
       - "4000:4000"
 

@@ -1,5 +1,6 @@
 import cors from "cors";
 import express from "express";
+import helmet from "helmet";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,12 +16,38 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const distDir = path.resolve(__dirname, "../dist");
 const publicDir = path.resolve(__dirname, "../public");
 
+app.disable("x-powered-by");
 app.use(
   cors({
     origin: config.corsOrigins,
     credentials: true,
   }),
 );
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        baseUri: ["'self'"],
+        connectSrc: ["'self'", ...config.corsOrigins],
+        fontSrc: ["'self'", "data:"],
+        imgSrc: ["'self'", "data:", "https://cdn.jsdelivr.net"],
+        objectSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+      },
+    },
+  }),
+);
+app.use((req, res, next) => {
+  const startedAt = Date.now();
+  res.on("finish", () => {
+    if (req.path.startsWith("/api")) {
+      console.log(`${req.method} ${req.originalUrl} ${res.statusCode} ${Date.now() - startedAt}ms`);
+    }
+  });
+  next();
+});
 app.use(express.json({ limit: "1mb" }));
 app.use(express.static(publicDir));
 
@@ -46,7 +73,7 @@ app.use((error, _req, res, _next) => {
     return res.status(400).json({
       message:
         error.code === "LIMIT_FILE_SIZE"
-          ? `Le fichier est trop lourd. Taille maximale: ${error.field === "apk" ? "80 Mo" : error.field === "logo" ? "3 Mo" : error.field === "screenshot" ? "5 Mo" : error.field === "profile" ? "4 Mo" : "8 Mo"}.`
+          ? `Le fichier est trop lourd. Taille maximale: ${error.field === "apk" ? "40 Mo" : error.field === "logo" ? "3 Mo" : error.field === "screenshot" ? "5 Mo" : error.field === "profile" ? "4 Mo" : "8 Mo"}.`
           : "Upload impossible. Vérifie le fichier envoyé.",
     });
   }

@@ -12,6 +12,7 @@ export const contentRouter = Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(__dirname, "../../public");
 const cvManifestPath = path.join(publicDir, "cv-manifest.json");
+const certificationsManifestPath = path.join(publicDir, "certifications-manifest.json");
 const profileManifestPath = path.join(publicDir, "profile-manifest.json");
 const allowedCvTypes = new Map([
   ["application/pdf", ".pdf"],
@@ -86,6 +87,13 @@ const profileUpload = createPublicUpload({
   unsupportedMessage: "Format non supporté. Envoie une image JPG, PNG ou WEBP.",
 });
 
+const certificationsUpload = createPublicUpload({
+  allowedTypes: new Map([["application/pdf", ".pdf"]]),
+  basename: "certifications",
+  maxSize: 12 * 1024 * 1024,
+  unsupportedMessage: "Format non supporté. Envoie un PDF.",
+});
+
 contentRouter.get("/", asyncHandler(async (_req, res) => {
   const content = await SiteContent.findOne({ key: "main" });
   return res.json({ content: content?.data || null });
@@ -124,6 +132,29 @@ contentRouter.post(
     await fs.writeFile(cvManifestPath, JSON.stringify(manifest, null, 2));
 
     return res.json({ cv: manifest });
+  }),
+);
+
+contentRouter.post(
+  "/certifications",
+  requireAuth,
+  certificationsUpload.single("certifications"),
+  asyncHandler(async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ message: "Aucun fichier de certifications reçu." });
+    }
+
+    const manifest = {
+      url: `/${req.file.filename}`,
+      type: "pdf",
+      originalName: req.file.originalname,
+      mimeType: req.file.mimetype,
+      uploadedAt: new Date().toISOString(),
+    };
+
+    await fs.writeFile(certificationsManifestPath, JSON.stringify(manifest, null, 2));
+
+    return res.json({ certifications: manifest });
   }),
 );
 

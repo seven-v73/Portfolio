@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import multer from "multer";
 import { requireAuth } from "../middleware/auth.js";
 import { Project } from "../models/Project.js";
+import { SiteContent } from "../models/SiteContent.js";
+import { getGithubProjects } from "../services/githubProjects.js";
 import { projectInputSchema } from "../validation.js";
 
 export const projectsRouter = Router();
@@ -18,7 +20,6 @@ const allowedLogoTypes = new Map([
   ["image/jpeg", ".jpg"],
   ["image/png", ".png"],
   ["image/webp", ".webp"],
-  ["image/svg+xml", ".svg"],
 ]);
 
 function createImageUpload({ directory, label, maxSize }) {
@@ -45,7 +46,7 @@ function createImageUpload({ directory, label, maxSize }) {
     }),
     fileFilter: (_req, file, cb) => {
       if (!allowedLogoTypes.has(file.mimetype)) {
-        cb(new Error(`Format non supporté. Envoie ${label === "logo" ? "un logo" : "une capture"} JPG, PNG, WEBP ou SVG.`));
+        cb(new Error(`Format non supporté. Envoie ${label === "logo" ? "un logo" : "une capture"} JPG, PNG ou WEBP.`));
         return;
       }
       cb(null, true);
@@ -93,12 +94,24 @@ const apkUpload = multer({
     }
     cb(null, true);
   },
-  limits: { fileSize: 80 * 1024 * 1024 },
+  limits: { fileSize: 40 * 1024 * 1024 },
 });
 
 projectsRouter.get("/", asyncHandler(async (_req, res) => {
-  const projects = await Project.find().sort({ createdAt: -1 });
-  return res.json({ projects });
+  const content = await SiteContent.findOne({ key: "main" });
+  const contentProjects = content?.data?.projects;
+  const baseProjects = Array.isArray(contentProjects) && contentProjects.length
+    ? contentProjects
+    : await Project.find().sort({ createdAt: -1 });
+  const githubProjects = await getGithubProjects();
+
+  return res.json({
+    projects: mergeProjects(baseProjects, githubProjects),
+    sources: {
+      manual: baseProjects.length,
+      github: githubProjects.length,
+    },
+  });
 }));
 
 projectsRouter.post(
@@ -190,6 +203,32 @@ projectsRouter.delete("/:id", requireAuth, asyncHandler(async (req, res) => {
 
 function normalizeProject(payload = {}) {
   return projectInputSchema.parse(payload);
+}
+
+function mergeProjects(manualProjects = [], githubProjects = []) {
+  const seen = new Set();
+  const merged = [];
+
+  for (const project of [...manualProjects, ...githubProjects]) {
+    const key = getProjectKey(project);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(project);
+  }
+
+  return merged;
+}
+
+function getProjectKey(project = {}) {
+  const githubRepo = String(project.githubRepo || "").toLowerCase();
+  if (githubRepo) return `github:${githubRepo}`;
+
+  const projectUrl = String(project.projectUrl || project.githubUrl || "").toLowerCase();
+  if (projectUrl.includes("github.com/")) {
+    return `url:${projectUrl.replace(/\/$/, "")}`;
+  }
+
+  return `name:${String(project.name || "").trim().toLowerCase()}`;
 }
 
 function asyncHandler(handler) {

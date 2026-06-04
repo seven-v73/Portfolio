@@ -1,6 +1,19 @@
 import { z } from "zod";
 
-const urlSchema = z.string().trim().url().or(z.literal(""));
+function addHttpsProtocol(value) {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.startsWith("/") || /^[a-z][a-z\d+.-]*:/i.test(trimmed)) {
+    return trimmed;
+  }
+  return `https://${trimmed}`;
+}
+
+const urlSchema = z.preprocess(addHttpsProtocol, z.string().trim().url().or(z.literal("")));
+const publicAssetSchema = z.preprocess(
+  addHttpsProtocol,
+  z.string().trim().startsWith("/").or(z.string().trim().url()).or(z.literal("")),
+);
 
 const stackItemSchema = z.object({
   name: z.string().trim().min(1).max(80),
@@ -18,9 +31,15 @@ const projectSchema = z.object({
   focus: z.string().trim().min(1).max(140),
   description: z.string().trim().min(1).max(700),
   detail: z.string().trim().max(1400).optional().default(""),
-  logoUrl: urlSchema.optional().default(""),
+  logoUrl: publicAssetSchema.optional().default(""),
   projectUrl: urlSchema.optional().default(""),
-  apkUrl: z.string().trim().startsWith("/").or(urlSchema).or(z.literal("")).optional().default(""),
+  githubUrl: urlSchema.optional().default(""),
+  githubRepo: z.string().trim().max(180).optional().default(""),
+  githubUpdatedAt: z.string().trim().max(80).optional().default(""),
+  githubStars: z.coerce.number().min(0).optional().default(0),
+  githubForks: z.coerce.number().min(0).optional().default(0),
+  source: z.enum(["manual", "github"]).optional().default("manual"),
+  apkUrl: publicAssetSchema.optional().default(""),
   apkName: z.string().trim().max(180).optional().default(""),
   screenshots: z.array(z.object({
     url: z.string().trim().startsWith("/").or(urlSchema),

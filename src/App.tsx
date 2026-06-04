@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import Lenis from "lenis";
 import { motion } from "framer-motion";
 import {
@@ -13,6 +13,8 @@ import {
   GitBranch,
   GraduationCap,
   Github,
+  Home,
+  Laptop,
   Layers3,
   Linkedin,
   LockKeyhole,
@@ -22,8 +24,12 @@ import {
   Rocket,
   ServerCog,
   ShieldCheck,
+  Moon,
   Smartphone,
+  Sun,
   Terminal,
+  UserRound,
+  type LucideIcon,
 } from "lucide-react";
 import {
   clearAdminDraft,
@@ -46,19 +52,28 @@ import {
   getPaletteItems,
 } from "./victoire-os/shell/suggestions";
 import type { ShellMode, VictoireMemory } from "./victoire-os/types";
+import { enLocale } from "./i18n/en";
+import { frLocale } from "./i18n/fr";
+import type { IdentityPillar, Language, ProjectItem, SiteContent, StackGroup, TimelineItem, UiCopy } from "./i18n/types";
 
-const navItems = [
-  { label: "Accueil", id: "top" },
-  { label: "Profil", id: "profil" },
-  { label: "Parcours", id: "parcours" },
-  { label: "Stack", id: "stack" },
-  { label: "Projets", id: "projets" },
-  { label: "Atelier", id: "labo" },
-  { label: "CV", id: "cv" },
-  { label: "Contact", id: "contact" },
-];
+const locales = {
+  fr: frLocale,
+  en: enLocale,
+} satisfies Record<Language, typeof frLocale>;
 
-const navSectionIds = navItems.map((item) => item.id);
+const navItemIds = ["top", "profil", "parcours", "stack", "projets", "labo", "cv", "certifications", "contact"] as const;
+const navSectionIds = [...navItemIds];
+const navIcons: Record<(typeof navItemIds)[number], LucideIcon> = {
+  top: Home,
+  profil: UserRound,
+  parcours: GraduationCap,
+  stack: Cpu,
+  projets: Layers3,
+  labo: Terminal,
+  cv: FileText,
+  certifications: ShieldCheck,
+  contact: Mail,
+};
 
 const stacks = [
   {
@@ -66,8 +81,20 @@ const stacks = [
     icon: Layers3,
     items: [
       {
+        name: "HTML",
+        logo: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/html5/html5-original.svg",
+      },
+      {
+        name: "CSS",
+        logo: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/css3/css3-original.svg",
+      },
+      {
         name: "React",
         logo: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/react/react-original.svg",
+      },
+      {
+        name: "Next.js",
+        logo: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/nextjs/nextjs-original.svg",
       },
       {
         name: "TypeScript",
@@ -122,8 +149,16 @@ const stacks = [
         logo: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/laravel/laravel-original.svg",
       },
       {
+        name: "Python",
+        logo: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/python/python-original.svg",
+      },
+      {
         name: "MongoDB",
         logo: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/mongodb/mongodb-original.svg",
+      },
+      {
+        name: "MySQL",
+        logo: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/mysql/mysql-original.svg",
       },
     ],
   },
@@ -138,6 +173,14 @@ const stacks = [
       {
         name: "Linux",
         logo: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/linux/linux-original.svg",
+      },
+      {
+        name: "Bash",
+        logo: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/bash/bash-original.svg",
+      },
+      {
+        name: "PowerShell",
+        logo: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/powershell/powershell-original.svg",
       },
       {
         name: "Java",
@@ -158,6 +201,8 @@ const projects: ProjectItem[] = [
     focus: "Stylisme virtuel",
     description:
       "Application mobile pour explorer des tenues, préparer un style et valoriser des inspirations vestimentaires africaines.",
+    detail:
+      "Rôle: conception produit et développement mobile. Travail clé: transformer un besoin très visuel en parcours simple, avec fiches tenues, inspirations et logique de recommandation. Valeur: aider l'utilisateur à préparer un look plus vite tout en donnant de la place aux références locales.",
     tags: ["Flutter", "Mode", "Mobile", "Produit"],
   },
   {
@@ -166,6 +211,8 @@ const projects: ProjectItem[] = [
     focus: "Patrimoine digital",
     description:
       "Espace web pensé pour réunir contenus, boutiques, créateurs et communautés autour de la culture et des savoir-faire locaux.",
+    detail:
+      "Rôle: cadrage de la plateforme, architecture web et logique de contenu. Travail clé: organiser culture, boutique et communauté dans une expérience lisible. Valeur: rendre les créateurs, produits et savoir-faire plus découvrables depuis une interface unique.",
     tags: ["React", "Node.js", "MongoDB", "Culture"],
   },
   {
@@ -174,6 +221,8 @@ const projects: ProjectItem[] = [
     focus: "Service de proximité",
     description:
       "Service local pour rendre la recherche, la publication et la gestion d'offres plus simples au quotidien.",
+    detail:
+      "Rôle: prototype produit et expérience utilisateur. Travail clé: clarifier les étapes de publication, de recherche et de contact pour un usage local. Valeur: réduire la friction entre une personne qui cherche un service et une personne qui publie une offre.",
     tags: ["Produit", "UX", "Web"],
   },
   {
@@ -182,6 +231,8 @@ const projects: ProjectItem[] = [
     focus: "Gestion communautaire",
     description:
       "Outil de suivi pour savoir qui a cotisé, ce qui reste à faire et quelles informations doivent être partagées.",
+    detail:
+      "Rôle: conception de l'outil, modélisation des données et parcours dashboard. Travail clé: rendre l'état des paiements vérifiable rapidement. Valeur: éviter les oublis, les doubles vérifications manuelles et les messages dispersés.",
     tags: ["Gestion", "Backend", "Dashboard"],
   },
 ];
@@ -206,28 +257,13 @@ const techMarquee = [
   "Node.js",
   "MongoDB",
   "Docker",
+  "Bash",
+  "PowerShell",
   "Laravel",
   "Java",
   "Firebase",
   "Automatisation",
 ];
-
-type ProjectItem = {
-  name: string;
-  type: string;
-  focus: string;
-  description: string;
-  detail?: string;
-  tags: string[];
-  logoUrl?: string;
-  projectUrl?: string;
-  apkUrl?: string;
-  apkName?: string;
-  screenshots?: {
-    url: string;
-    alt?: string;
-  }[];
-};
 
 const maxProjects = 20;
 const maxStackGroups = 8;
@@ -242,6 +278,7 @@ const projectTemplates: Record<string, ProjectItem> = {
     detail: "Ajoute ici le contexte, les choix techniques, les écrans importants et les prochaines évolutions.",
     logoUrl: "",
     projectUrl: "",
+    githubUrl: "",
     apkUrl: "",
     apkName: "",
     screenshots: [],
@@ -255,6 +292,7 @@ const projectTemplates: Record<string, ProjectItem> = {
     detail: "Ajoute ici les fonctionnalités clés, les choix Flutter/Android et les tests réalisés.",
     logoUrl: "",
     projectUrl: "",
+    githubUrl: "",
     apkUrl: "",
     apkName: "",
     screenshots: [],
@@ -268,6 +306,7 @@ const projectTemplates: Record<string, ProjectItem> = {
     detail: "Ajoute ici les rôles, les données gérées, les tableaux de bord et les règles métier.",
     logoUrl: "",
     projectUrl: "",
+    githubUrl: "",
     apkUrl: "",
     apkName: "",
     screenshots: [],
@@ -313,6 +352,10 @@ const stackGroupTemplates = {
         name: "MongoDB",
         logo: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/mongodb/mongodb-original.svg",
       },
+      {
+        name: "Python",
+        logo: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/python/python-original.svg",
+      },
     ],
   },
   devops: {
@@ -325,6 +368,14 @@ const stackGroupTemplates = {
       {
         name: "Linux",
         logo: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/linux/linux-original.svg",
+      },
+      {
+        name: "Bash",
+        logo: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/bash/bash-original.svg",
+      },
+      {
+        name: "PowerShell",
+        logo: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/powershell/powershell-original.svg",
       },
     ],
   },
@@ -388,41 +439,6 @@ const academicTimeline = [
   },
 ];
 
-type StackGroup = typeof stacks[number];
-type TimelineItem = typeof professionalTimeline[number];
-type IdentityPillar = typeof identityPillars[number];
-
-type SiteContent = {
-  heroEyebrow: string;
-  heroTitle: string;
-  heroLead: string;
-  profileCaption: string;
-  metrics: string[][];
-  techMarquee: string[];
-  aboutTitle: string;
-  aboutParagraphs: string[];
-  identityTitle: string;
-  identityIntro: string;
-  identityPillars: IdentityPillar[];
-  journeyTitle: string;
-  journeyIntro: string;
-  professionalTimeline: TimelineItem[];
-  academicTimeline: TimelineItem[];
-  stacks: StackGroup[];
-  projects: ProjectItem[];
-  labTitle: string;
-  labIntro: string;
-  labs: string[];
-  contactTitle: string;
-  contactText: string;
-  contactLinks: {
-    email: string;
-    github: string;
-    linkedin: string;
-    whatsapp: string;
-  };
-};
-
 type CvInfo = {
   url: string;
   type: "pdf" | "image";
@@ -431,6 +447,8 @@ type CvInfo = {
   uploadedAt?: string;
 };
 
+type ThemeMode = "dark" | "light";
+
 type ProfilePhotoInfo = {
   url: string;
   originalName?: string;
@@ -438,45 +456,7 @@ type ProfilePhotoInfo = {
   uploadedAt?: string;
 };
 
-const defaultContent: SiteContent = {
-  heroEyebrow: "Développeur Fullstack & Mobile",
-  heroTitle: "Je construis des applications utiles, claires et prêtes à évoluer.",
-  heroLead:
-    "Je conçois des interfaces, des API et des applications mobiles pour transformer un besoin concret en produit utilisable: comprendre, prototyper, livrer, puis améliorer avec les retours.",
-  profileCaption: "Web, mobile, API et produits de terrain",
-  metrics,
-  techMarquee,
-  aboutTitle:
-    "Un développeur qui relie interface, backend et usage réel.",
-  aboutParagraphs: [
-    "Je travaille sur des plateformes culturelles, des outils de gestion, des solutions e-commerce et des applications mobiles pensées pour être comprises rapidement.",
-    "Mon réflexe: clarifier le problème, découper le travail, automatiser ce qui prend du temps, puis livrer une version que quelqu'un peut vraiment utiliser.",
-  ],
-  identityTitle: "Une présence simple: ce que je fais, comment je travaille, ce que j'ai déjà construit.",
-  identityIntro:
-    "Cette plateforme rassemble mon profil, mes projets, mon CV, mes liens et un atelier interactif pour explorer mon travail sans se perdre.",
-  identityPillars,
-  journeyTitle: "Parcours professionnel, apprentissage et projets.",
-  journeyIntro:
-    "Un parcours construit par la pratique: support, développement, produit, déploiement et amélioration continue.",
-  professionalTimeline,
-  academicTimeline,
-  stacks,
-  projects,
-  labTitle: "Des idées testées vite, puis améliorées avec le terrain.",
-  labIntro:
-    "Je garde ici les pistes de produits, les prototypes et les sujets qui peuvent devenir des solutions utiles.",
-  labs,
-  contactTitle: "Discutons d'un besoin concret.",
-  contactText:
-    "Disponible pour des projets web, mobile, API, digitalisation, maintenance et accompagnement technique.",
-  contactLinks: {
-    email: "contact@example.com",
-    github: "https://github.com/",
-    linkedin: "https://www.linkedin.com/",
-    whatsapp: "https://wa.me/",
-  },
-};
+const defaultContent: SiteContent = frLocale.content;
 
 const stackIcons = {
   Frontend: Layers3,
@@ -487,32 +467,72 @@ const stackIcons = {
 
 function App() {
   const isLoginRoute = window.location.pathname === "/login";
-  const [content, setContent] = useState<SiteContent>(defaultContent);
+  const [language, setLanguage] = useState<Language>(() => getInitialLanguage());
+  const [theme, setTheme] = useState<ThemeMode>(() => getInitialTheme());
+  const locale = locales[language];
+  const [content, setContent] = useState<SiteContent>(locale.content);
+
+  useEffect(() => {
+    localStorage.setItem("portfolio_language", language);
+    document.documentElement.lang = language;
+  }, [language]);
+
+  useEffect(() => {
+    localStorage.setItem("portfolio_theme", theme);
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
 
   useEffect(() => {
     if (isLoginRoute) return;
 
-    fetch("/api/content")
-      .then((response) => (response.ok ? readJsonResponse(response) : Promise.reject()))
-      .then((data) => {
-        if (data.content) {
-          setContent(mergeContent(data.content));
-        }
-      })
-      .catch(() => setContent(defaultContent));
+    let isMounted = true;
 
-    fetch("/api/projects")
-      .then((response) => (response.ok ? readJsonResponse(response) : Promise.reject()))
-      .then((data) => {
-        if (Array.isArray(data.projects) && data.projects.length) {
-          setContent((current) => ({
-            ...current,
-            projects: data.projects.map(normalizeApiProject),
-          }));
+    async function loadPublicContent() {
+      let nextContent = locale.content;
+
+      if (language === "fr") {
+        try {
+          const contentResponse = await fetch("/api/content");
+          if (contentResponse.ok) {
+            const data = await readJsonResponse(contentResponse);
+            if (data.content) {
+              nextContent = mergeContent(data.content, locale.content);
+            }
+          }
+        } catch {
+          nextContent = locale.content;
         }
-      })
-      .catch(() => undefined);
-  }, [isLoginRoute]);
+      }
+
+      try {
+        const projectsResponse = await fetch("/api/projects");
+        if (projectsResponse.ok) {
+          const data = await readJsonResponse(projectsResponse);
+          if (Array.isArray(data.projects) && data.projects.length) {
+            const apiProjects = data.projects.map(normalizePublicProject);
+            const nextProjects = language === "en"
+              ? mergeTranslatedAndGithubProjects(nextContent.projects, apiProjects)
+              : apiProjects;
+            nextContent = {
+              ...nextContent,
+              projects: nextProjects,
+            };
+          }
+        }
+      } catch {
+        // Static preview or offline API: keep the content fallback.
+      }
+
+      if (isMounted) {
+        setContent(nextContent);
+      }
+    }
+
+    loadPublicContent();
+    return () => {
+      isMounted = false;
+    };
+  }, [isLoginRoute, language, locale.content]);
 
   useEffect(() => {
     if (isLoginRoute) return;
@@ -539,36 +559,244 @@ function App() {
     <LoginPage />
   ) : (
     <main className="site-shell">
+      <ScrollProgress />
       <a className="skip-link" href="#profil">
-        Aller au contenu
+        {locale.ui.skipLink}
       </a>
       <AmbientBackground />
-      <Header />
-      <Hero content={content} />
-      <About content={content} />
-      <Identity content={content} />
-      <Journey content={content} />
-      <Stack content={content} />
-      <Projects content={content} />
-      <Lab content={content} />
-      <CvSection />
-      <Contact content={content} />
+      <Header
+        language={language}
+        theme={theme}
+        ui={locale.ui}
+        onToggleLanguage={() => setLanguage(language === "fr" ? "en" : "fr")}
+        onToggleTheme={() => setTheme(theme === "dark" ? "light" : "dark")}
+      />
+      <Hero content={content} ui={locale.ui} />
+      <RecruiterBrief ui={locale.ui} />
+      <About content={content} ui={locale.ui} />
+      <Identity content={content} ui={locale.ui} />
+      <Journey content={content} ui={locale.ui} />
+      <Stack content={content} ui={locale.ui} />
+      <Projects content={content} ui={locale.ui} language={language} />
+      <Lab content={content} ui={locale.ui} />
+      <CvSection ui={locale.ui} />
+      <CertificationsSection ui={locale.ui} />
+      <Contact content={content} ui={locale.ui} />
     </main>
   );
 }
 
-function mergeContent(content: Partial<SiteContent>): SiteContent {
+function ScrollProgress() {
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    function updateProgress() {
+      const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+      setProgress(maxScroll > 0 ? Math.min(1, window.scrollY / maxScroll) : 0);
+    }
+
+    updateProgress();
+    window.addEventListener("scroll", updateProgress, { passive: true });
+    window.addEventListener("resize", updateProgress);
+    return () => {
+      window.removeEventListener("scroll", updateProgress);
+      window.removeEventListener("resize", updateProgress);
+    };
+  }, []);
+
+  return (
+    <div className="scroll-progress" aria-hidden="true">
+      <span style={{ transform: `scaleX(${progress})` }} />
+    </div>
+  );
+}
+
+function getInitialLanguage(): Language {
+  const storedLanguage = localStorage.getItem("portfolio_language");
+  if (storedLanguage === "fr" || storedLanguage === "en") {
+    return storedLanguage;
+  }
+
+  return "fr";
+}
+
+function getInitialTheme(): ThemeMode {
+  const storedTheme = localStorage.getItem("portfolio_theme");
+  if (storedTheme === "dark" || storedTheme === "light") {
+    return storedTheme;
+  }
+
+  return "dark";
+}
+
+function mergeContent(content: Partial<SiteContent>, baseContent = defaultContent): SiteContent {
+  const refreshedContent = refreshLegacyCopy(content, baseContent);
+  const professionalTimeline = sanitizeProfessionalTimeline(isLegacyTimeline(content.professionalTimeline, [
+    "Développeur Fullstack & Mobile",
+    "Support IT, maintenance et accompagnement technique",
+    "Produits numériques utiles au terrain",
+  ])
+    ? baseContent.professionalTimeline
+    : content.professionalTimeline);
+  const academicTimeline = isLegacyTimeline(content.academicTimeline, [
+    "Développement fullstack, mobile et produit numérique",
+    "Veille, projets personnels et apprentissage par la pratique",
+  ])
+    ? baseContent.academicTimeline
+    : content.academicTimeline;
+
   return {
-    ...defaultContent,
-    ...content,
-    contactLinks: {
-      ...defaultContent.contactLinks,
-      ...(content.contactLinks || {}),
-    },
+    ...baseContent,
+    ...refreshedContent,
+    professionalTimeline: professionalTimeline || baseContent.professionalTimeline,
+    academicTimeline: academicTimeline || baseContent.academicTimeline,
+    stacks: withRequiredStackItems(refreshedContent.stacks || baseContent.stacks, baseContent.stacks),
+    contactLinks: normalizeContactLinks(refreshedContent.contactLinks, baseContent.contactLinks),
   };
 }
 
-function normalizeApiProject(project: ProjectItem): ProjectItem {
+function withRequiredStackItems(stacks: StackGroup[], baseStacks: StackGroup[]): StackGroup[] {
+  return stacks.map((stack) => {
+    const baseStack = baseStacks.find((candidate) => candidate.title.toLowerCase() === stack.title.toLowerCase());
+    if (!baseStack) {
+      return stack;
+    }
+
+    const nextItems = [...stack.items];
+    baseStack.items.forEach((baseItem) => {
+      const hasItem = nextItems.some((item) => item.name.toLowerCase() === baseItem.name.toLowerCase());
+      if (!hasItem) {
+        nextItems.push(baseItem);
+      }
+    });
+
+    return { ...stack, items: nextItems };
+  });
+}
+
+function refreshLegacyCopy(content: Partial<SiteContent>, baseContent: SiteContent): Partial<SiteContent> {
+  const nextContent = { ...content };
+  const legacyCopy: Partial<Record<keyof SiteContent, string[]>> = {
+    heroEyebrow: ["Développeur Fullstack & Mobile", "Terminal-minded fullstack developer", "Fullstack, mobile, support IT"],
+    heroTitle: [
+      "Je construis des applications utiles, claires et prêtes à évoluer.",
+      "Je transforme les idées en produits qui respirent le code.",
+      "Je construis des interfaces qu'on peut vraiment utiliser.",
+      "Je crée des interfaces vraiment utiles.",
+    ],
+    heroLead: [
+      "Je conçois des interfaces, des API et des applications mobiles pour transformer un besoin concret en produit utilisable: comprendre, prototyper, livrer, puis améliorer avec les retours.",
+      "Développeur Fullstack & Mobile, je construis des expériences utiles avec une culture de ligne de commande: comprendre, prototyper, automatiser, livrer et rendre la technologie plus humaine.",
+      "J'aime partir d'un besoin simple, le clarifier, puis livrer quelque chose de propre: une page, une API, une app mobile ou un outil interne.",
+    ],
+    profileCaption: ["Web, mobile, API et produits de terrain", "Fullstack, mobile, terminal et innovation africaine", "Web, mobile, support IT, projets livrés"],
+    aboutTitle: ["Un développeur qui relie interface, backend et usage réel."],
+    identityTitle: ["Une présence simple: ce que je fais, comment je travaille, ce que j'ai déjà construit."],
+    identityIntro: [
+      "Cette plateforme rassemble mon profil, mes projets, mon CV, mes liens et un atelier interactif pour explorer mon travail sans se perdre.",
+      "Le portfolio devient une fenêtre sur ton atelier: commandes, décisions produit, projets en chantier et attention portée aux utilisateurs.",
+    ],
+    journeyTitle: [
+      "Formation, terrain et expériences techniques.",
+      "Professionnel, académique et produit, sans récit inventé.",
+    ],
+    journeyIntro: [
+      "Un parcours construit entre études informatiques, stages techniques et pratique sur des projets web, mobile et support IT.",
+      "Les éléments ci-dessous reprennent uniquement les informations sûres. Les dates et diplômes exacts peuvent être ajoutés dès que tu me les donnes.",
+    ],
+    labTitle: ["Des idées testées vite, puis améliorées avec le terrain."],
+    labIntro: ["Je garde ici les pistes de produits, les prototypes et les sujets qui peuvent devenir des solutions utiles."],
+    contactTitle: ["Discutons d'un besoin concret."],
+    contactText: ["Disponible pour des projets web, mobile, API, digitalisation, maintenance et accompagnement technique."],
+  };
+
+  for (const [key, legacyValues] of Object.entries(legacyCopy) as [keyof SiteContent, string[]][]) {
+    const currentValue = nextContent[key];
+    if (typeof currentValue === "string" && legacyValues.includes(currentValue)) {
+      nextContent[key] = baseContent[key] as never;
+    }
+  }
+
+  if (Array.isArray(nextContent.metrics)) {
+    const oldMetricLabels = new Set(["Ce que je livre", "Ma méthode", "Mon angle", "Mode build", "Approche", "Mission", "Je fais", "Je connais", "Je préfère"]);
+    if (nextContent.metrics.some(([label]) => oldMetricLabels.has(label))) {
+      nextContent.metrics = baseContent.metrics;
+    }
+  }
+
+  if (Array.isArray(nextContent.aboutParagraphs) && nextContent.aboutParagraphs.some((paragraph) => paragraph.startsWith("Je travaille sur des plateformes culturelles"))) {
+    nextContent.aboutParagraphs = baseContent.aboutParagraphs;
+  }
+
+  if (Array.isArray(nextContent.identityPillars) && nextContent.identityPillars.some((pillar) => pillar.title === "Je pars du besoin réel")) {
+    nextContent.identityPillars = baseContent.identityPillars;
+  }
+
+  return nextContent;
+}
+
+function normalizeLinkedinLink(value: string) {
+  if (!value || value === "https://www.linkedin.com/") {
+    return "https://www.linkedin.com/in/victoire-sawadogo-679113253/";
+  }
+
+  return value;
+}
+
+function normalizeContactLinks(
+  links: Partial<SiteContent["contactLinks"]> | undefined,
+  fallback: SiteContent["contactLinks"],
+) {
+  const nextLinks = {
+    ...fallback,
+    ...(links || {}),
+  };
+
+  if (!nextLinks.email || nextLinks.email === "contact@example.com") {
+    nextLinks.email = fallback.email;
+  }
+
+  if (!nextLinks.github || nextLinks.github === "https://github.com/") {
+    nextLinks.github = fallback.github;
+  }
+  nextLinks.github = nextLinks.github.replace(/\/$/, "");
+
+  if (!nextLinks.whatsapp || nextLinks.whatsapp === "https://wa.me/") {
+    nextLinks.whatsapp = fallback.whatsapp;
+  }
+  nextLinks.whatsapp = nextLinks.whatsapp.replace(/\/$/, "");
+
+  nextLinks.linkedin = normalizeLinkedinLink(nextLinks.linkedin || fallback.linkedin);
+  return nextLinks;
+}
+
+function isLegacyTimeline(timeline: Partial<TimelineItem>[] | undefined, legacyTitles: string[]) {
+  if (!Array.isArray(timeline) || !timeline.length) return false;
+  const titles = new Set(timeline.map((item) => item.title));
+  return legacyTitles.some((title) => titles.has(title));
+}
+
+function sanitizeProfessionalTimeline(timeline: Partial<TimelineItem>[] | undefined) {
+  if (!Array.isArray(timeline)) return timeline;
+  const hiddenTitles = new Set([
+    "ALPHABETCLIC - Stage en développement mobile",
+    "ALPHABETCLIC - Mobile development intern",
+    "SONABEL - Stage en télécommunication",
+    "SONABEL - Telecommunication intern",
+  ]);
+  return timeline.filter((item) => !hiddenTitles.has(item.title || "")) as TimelineItem[];
+}
+
+function mergeTranslatedAndGithubProjects(translatedProjects: ProjectItem[], apiProjects: ProjectItem[]) {
+  const githubProjects = apiProjects.filter((project) => project.source === "github");
+  const translatedNames = new Set(translatedProjects.map((project) => project.name.toLowerCase()));
+  return [
+    ...translatedProjects,
+    ...githubProjects.filter((project) => !translatedNames.has(project.name.toLowerCase())),
+  ];
+}
+
+function normalizePublicProject(project: ProjectItem): ProjectItem {
   return {
     name: project.name,
     type: project.type,
@@ -577,6 +805,12 @@ function normalizeApiProject(project: ProjectItem): ProjectItem {
     detail: project.detail || "",
     logoUrl: project.logoUrl || "",
     projectUrl: project.projectUrl || "",
+    githubUrl: project.githubUrl || "",
+    githubRepo: project.githubRepo || "",
+    githubUpdatedAt: project.githubUpdatedAt || "",
+    githubStars: Number(project.githubStars || 0),
+    githubForks: Number(project.githubForks || 0),
+    source: project.source === "github" ? "github" : "manual",
     apkUrl: project.apkUrl || "",
     apkName: project.apkName || "",
     screenshots: Array.isArray(project.screenshots) ? project.screenshots : [],
@@ -600,15 +834,12 @@ function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem("portfolio_admin_token");
-    if (!token) return;
-
     fetch("/api/auth/me", {
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
     })
       .then((response) => (response.ok ? readJsonResponse(response) : Promise.reject()))
       .then((data) => setUser(data.user))
-      .catch(() => localStorage.removeItem("portfolio_admin_token"));
+      .catch(() => undefined);
   }, []);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -620,6 +851,7 @@ function LoginPage() {
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ email, password }),
       });
       const data = await readJsonResponse(response);
@@ -628,7 +860,6 @@ function LoginPage() {
         throw new Error(data.message || "Connexion impossible.");
       }
 
-      localStorage.setItem("portfolio_admin_token", data.token);
       setUser(data.user);
       setPassword("");
     } catch (error) {
@@ -638,8 +869,11 @@ function LoginPage() {
     }
   }
 
-  function logout() {
-    localStorage.removeItem("portfolio_admin_token");
+  async function logout() {
+    await fetch("/api/auth/logout", {
+      method: "POST",
+      credentials: "include",
+    }).catch(() => undefined);
     setUser(null);
   }
 
@@ -698,11 +932,15 @@ function ContentManager({ user, onLogout }: { user: AuthUser; onLogout: () => vo
   const [cvStatus, setCvStatus] = useState("");
   const [cvStatusKind, setCvStatusKind] = useState<"success" | "error">("success");
   const [cvInfo, setCvInfo] = useState<CvInfo | null>(null);
+  const [certificationsStatus, setCertificationsStatus] = useState("");
+  const [certificationsStatusKind, setCertificationsStatusKind] = useState<"success" | "error">("success");
+  const [certificationsInfo, setCertificationsInfo] = useState<CvInfo | null>(null);
   const [profilePhotoInfo, setProfilePhotoInfo] = useState<ProfilePhotoInfo | null>(null);
   const [profilePhotoStatus, setProfilePhotoStatus] = useState("");
   const [profilePhotoStatusKind, setProfilePhotoStatusKind] = useState<"success" | "error">("success");
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingCv, setIsUploadingCv] = useState(false);
+  const [isUploadingCertifications, setIsUploadingCertifications] = useState(false);
   const [isUploadingProfilePhoto, setIsUploadingProfilePhoto] = useState(false);
   const [hasLoadedContent, setHasLoadedContent] = useState(false);
   const [lastSavedContent, setLastSavedContent] = useState<SiteContent>(defaultContent);
@@ -722,6 +960,11 @@ function ContentManager({ user, onLogout }: { user: AuthUser; onLogout: () => vo
       .then((response) => (response.ok ? readJsonResponse(response) : Promise.reject()))
       .then((data) => setCvInfo(data))
       .catch(() => setCvInfo(null));
+
+    fetch(`/certifications-manifest.json?t=${Date.now()}`)
+      .then((response) => (response.ok ? readJsonResponse(response) : Promise.reject()))
+      .then((data) => setCertificationsInfo(data))
+      .catch(() => setCertificationsInfo(null));
 
     fetch(`/profile-manifest.json?t=${Date.now()}`)
       .then((response) => (response.ok ? readJsonResponse(response) : Promise.reject()))
@@ -1043,13 +1286,12 @@ function ContentManager({ user, onLogout }: { user: AuthUser; onLogout: () => vo
     setStatus("");
 
     try {
-      const token = localStorage.getItem("portfolio_admin_token");
       const formData = new FormData();
       formData.append("apk", file);
 
       const response = await fetch("/api/projects/apk", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
         body: formData,
       });
       const data = await readJsonResponse(response);
@@ -1085,13 +1327,12 @@ function ContentManager({ user, onLogout }: { user: AuthUser; onLogout: () => vo
     setStatus("");
 
     try {
-      const token = localStorage.getItem("portfolio_admin_token");
       const formData = new FormData();
       formData.append("logo", file);
 
       const response = await fetch("/api/projects/logo", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
         body: formData,
       });
       const data = await readJsonResponse(response);
@@ -1121,13 +1362,12 @@ function ContentManager({ user, onLogout }: { user: AuthUser; onLogout: () => vo
     setStatus("");
 
     try {
-      const token = localStorage.getItem("portfolio_admin_token");
       const formData = new FormData();
       formData.append("screenshot", file);
 
       const response = await fetch("/api/projects/screenshot", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
         body: formData,
       });
       const data = await readJsonResponse(response);
@@ -1191,13 +1431,12 @@ function ContentManager({ user, onLogout }: { user: AuthUser; onLogout: () => vo
     setStatus("");
 
     try {
-      const token = localStorage.getItem("portfolio_admin_token");
       const response = await fetch("/api/content", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
+        credentials: "include",
         body: JSON.stringify(stripRuntimeFields(content)),
       });
       const data = await readJsonResponse(response);
@@ -1246,13 +1485,12 @@ function ContentManager({ user, onLogout }: { user: AuthUser; onLogout: () => vo
     setCvStatusKind("success");
 
     try {
-      const token = localStorage.getItem("portfolio_admin_token");
       const formData = new FormData();
       formData.append("cv", file);
 
       const response = await fetch("/api/content/cv", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
         body: formData,
       });
       const data = await readJsonResponse(response);
@@ -1273,6 +1511,41 @@ function ContentManager({ user, onLogout }: { user: AuthUser; onLogout: () => vo
     }
   }
 
+  async function uploadCertifications(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingCertifications(true);
+    setCertificationsStatus("");
+    setCertificationsStatusKind("success");
+
+    try {
+      const formData = new FormData();
+      formData.append("certifications", file);
+
+      const response = await fetch("/api/content/certifications", {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
+      const data = await readJsonResponse(response);
+
+      if (!response.ok) {
+        throw new Error(data.message || "Upload des certifications impossible.");
+      }
+
+      setCertificationsInfo(data.certifications);
+      setCertificationsStatusKind("success");
+      setCertificationsStatus("Certifications uploadées. La section publique est à jour.");
+    } catch (error) {
+      setCertificationsStatusKind("error");
+      setCertificationsStatus(error instanceof Error ? error.message : "Upload des certifications impossible.");
+    } finally {
+      setIsUploadingCertifications(false);
+      event.target.value = "";
+    }
+  }
+
   async function uploadProfilePhoto(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -1282,13 +1555,12 @@ function ContentManager({ user, onLogout }: { user: AuthUser; onLogout: () => vo
     setProfilePhotoStatusKind("success");
 
     try {
-      const token = localStorage.getItem("portfolio_admin_token");
       const formData = new FormData();
       formData.append("profile", file);
 
       const response = await fetch("/api/content/profile-photo", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
         body: formData,
       });
       const data = await readJsonResponse(response);
@@ -1485,6 +1757,44 @@ function ContentManager({ user, onLogout }: { user: AuthUser; onLogout: () => vo
           )}
           {cvStatus ? (
             <p className={`cv-upload-status ${cvStatusKind}`}>{cvStatus}</p>
+          ) : null}
+        </EditorCard>
+
+        <EditorCard title="Certifications publiques">
+          <div className="cv-upload-box">
+            <FileText size={26} />
+            <div>
+              <strong>Uploader les certifications</strong>
+              <p>Format accepté: PDF uniquement. Taille maximale: 12 Mo.</p>
+            </div>
+            <label className="cv-upload-button">
+              <input
+                type="file"
+                accept="application/pdf"
+                onChange={uploadCertifications}
+                disabled={isUploadingCertifications}
+              />
+              {isUploadingCertifications ? "Upload..." : "Choisir un PDF"}
+            </label>
+          </div>
+          {certificationsInfo ? (
+            <div className="admin-summary">
+              <span>Fichier</span>
+              <strong>{certificationsInfo.originalName || certificationsInfo.url}</strong>
+              <span>Type</span>
+              <strong>PDF</strong>
+              <span>Lien</span>
+              <strong>
+                <a href={certificationsInfo.url} target="_blank" rel="noreferrer">
+                  {certificationsInfo.url}
+                </a>
+              </strong>
+            </div>
+          ) : (
+            <p className="admin-note">Aucun PDF de certifications uploadé pour le moment.</p>
+          )}
+          {certificationsStatus ? (
+            <p className={`cv-upload-status ${certificationsStatusKind}`}>{certificationsStatus}</p>
           ) : null}
         </EditorCard>
       </div>
@@ -1948,7 +2258,7 @@ function ProjectEditor({
               <label className="cv-upload-button">
                 <input
                   type="file"
-                  accept="image/jpeg,image/png,image/webp,image/svg+xml"
+                  accept="image/jpeg,image/png,image/webp"
                   onChange={(event) => onUploadLogo(index, event)}
                   disabled={uploadingLogoIndex === index}
                 />
@@ -1956,7 +2266,11 @@ function ProjectEditor({
               </label>
             </div>
           </div>
-          <TextField label="Lien du projet" value={project.projectUrl || ""} onChange={(value) => onUpdate(index, "projectUrl", value)} />
+          <div className="project-link-grid">
+            <TextField label="Lien démo ou site" value={project.projectUrl || ""} onChange={(value) => onUpdate(index, "projectUrl", value)} />
+            <TextField label="Lien GitHub" value={project.githubUrl || ""} onChange={(value) => onUpdate(index, "githubUrl", value)} />
+            <TextField label="Lien APK" value={project.apkUrl || ""} onChange={(value) => onUpdate(index, "apkUrl", value)} />
+          </div>
           <TextField label="Type" value={project.type} onChange={(value) => onUpdate(index, "type", value)} />
           <TextField label="Focus" value={project.focus} onChange={(value) => onUpdate(index, "focus", value)} />
           <TextAreaField label="Description" value={project.description} onChange={(value) => onUpdate(index, "description", value)} />
@@ -2026,7 +2340,7 @@ function ProjectScreenshotsEditor({
         <label className="cv-upload-button">
           <input
             type="file"
-            accept="image/jpeg,image/png,image/webp,image/svg+xml"
+            accept="image/jpeg,image/png,image/webp"
             onChange={(event) => onUploadScreenshot(projectIndex, event)}
             disabled={uploadingScreenshotIndex === projectIndex}
           />
@@ -2073,27 +2387,225 @@ async function readJsonResponse(response: Response) {
   }
 }
 
-function Header() {
+function Header({
+  language,
+  theme,
+  ui,
+  onToggleLanguage,
+  onToggleTheme,
+}: {
+  language: Language;
+  theme: ThemeMode;
+  ui: UiCopy;
+  onToggleLanguage: () => void;
+  onToggleTheme: () => void;
+}) {
   const activeSection = useActiveSection(navSectionIds);
+  const isDarkTheme = theme === "dark";
+  const themeLabel = isDarkTheme ? "Sombre" : "Clair";
+  const nextThemeLabel = isDarkTheme ? "Clair" : "Sombre";
+  const ThemeIcon = isDarkTheme ? Moon : Sun;
+  const [isNavigationOpen, setIsNavigationOpen] = useState(false);
+  const headerRef = useRef<HTMLElement | null>(null);
+  const isNavigationOpenRef = useRef(isNavigationOpen);
+  const dragStateRef = useRef({
+    isDragging: false,
+    hasMoved: false,
+    originX: 18,
+    originY: 18,
+    startX: 0,
+    startY: 0,
+  });
+  const [widgetPosition, setWidgetPosition] = useState({ x: 18, y: 18 });
+
+  useEffect(() => {
+    isNavigationOpenRef.current = isNavigationOpen;
+  }, [isNavigationOpen]);
+
+  function clampWidgetPosition(position: { x: number; y: number }) {
+    const menuWidth = Math.min(560, window.innerWidth - 18);
+    const openHeight = window.innerWidth <= 430 ? 488 : window.innerWidth <= 760 ? 382 : 332;
+    const width = isNavigationOpenRef.current ? menuWidth : 116;
+    const height = isNavigationOpenRef.current ? openHeight : 86;
+
+    return {
+      x: Math.min(Math.max(8, position.x), Math.max(8, window.innerWidth - width - 8)),
+      y: Math.min(Math.max(8, position.y), Math.max(8, window.innerHeight - height - 8)),
+    };
+  }
+
+  function startDragging(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (event.button !== 0) return;
+    dragStateRef.current = {
+      isDragging: true,
+      hasMoved: false,
+      originX: widgetPosition.x,
+      originY: widgetPosition.y,
+      startX: event.clientX,
+      startY: event.clientY,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  useEffect(() => {
+    function handlePointerMove(event: PointerEvent) {
+      if (!dragStateRef.current.isDragging) return;
+      const deltaX = event.clientX - dragStateRef.current.startX;
+      const deltaY = event.clientY - dragStateRef.current.startY;
+      if (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4) {
+        dragStateRef.current.hasMoved = true;
+      }
+      const nextPosition = clampWidgetPosition({
+        x: dragStateRef.current.originX + deltaX,
+        y: dragStateRef.current.originY + deltaY,
+      });
+      setWidgetPosition(nextPosition);
+    }
+
+    function handlePointerUp() {
+      dragStateRef.current.isDragging = false;
+    }
+
+    function handleResize() {
+      setWidgetPosition((current) => clampWidgetPosition(current));
+    }
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("resize", handleResize);
+    };
+  }, []);
+
+  useEffect(() => {
+    setWidgetPosition((current) => clampWidgetPosition(current));
+  }, [isNavigationOpen]);
+
+  useEffect(() => {
+    if (!isNavigationOpen) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target as Node;
+      if (headerRef.current?.contains(target)) return;
+      setIsNavigationOpen(false);
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsNavigationOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isNavigationOpen]);
 
   return (
-    <header className="topbar">
-      <a className="brand" href="#top" aria-label="Retour en haut">
-        <span>VS</span>
-        <strong>Victoire SAWADOGO</strong>
-      </a>
-      <nav aria-label="Navigation principale">
-        {navItems.map((item) => (
-          <a
-            key={item.id}
-            href={`#${item.id}`}
-            className={activeSection === item.id ? "is-active" : undefined}
-            aria-current={activeSection === item.id ? "page" : undefined}
+    <header
+      className={`topbar floating-laptop-bar ${isNavigationOpen ? "is-nav-open" : ""}`}
+      ref={headerRef}
+      style={{ left: widgetPosition.x, top: widgetPosition.y }}
+    >
+      <span className="laptop-drag-handle" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </span>
+      <div className="floating-laptop-nav">
+        <button
+          className="laptop-trigger"
+          type="button"
+          aria-expanded={isNavigationOpen}
+          aria-controls="floating-laptop-screen"
+          aria-label={isNavigationOpen ? "Fermer la navigation" : "Ouvrir la navigation"}
+          onPointerDown={startDragging}
+          onClick={(event) => {
+            if (dragStateRef.current.hasMoved) {
+              event.preventDefault();
+              dragStateRef.current.hasMoved = false;
+              return;
+            }
+            setIsNavigationOpen((current) => !current);
+          }}
+        >
+          <span className="laptop-lid">
+            <span className="laptop-camera" />
+            <Laptop size={34} />
+            <span className="laptop-signal" />
+          </span>
+          <span className="laptop-base">
+            <span />
+          </span>
+        </button>
+      </div>
+
+      <motion.nav
+        id="floating-laptop-screen"
+        className="laptop-menu-panel"
+        aria-label="Navigation principale"
+        aria-hidden={!isNavigationOpen}
+        initial={false}
+        animate={isNavigationOpen ? "open" : "closed"}
+        variants={{
+          open: { opacity: 1, y: 0, scale: 1, filter: "blur(0px)" },
+          closed: { opacity: 0, y: -10, scale: 0.96, filter: "blur(8px)" },
+        }}
+        transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <div className="laptop-menu-top">
+          <span>nav.os</span>
+          <strong>{ui.nav[activeSection]}</strong>
+        </div>
+        <div className="laptop-menu-controls">
+          <button
+            className="theme-toggle"
+            type="button"
+            onClick={onToggleTheme}
+            aria-label={`Basculer en mode ${nextThemeLabel}`}
+            title={`Basculer en mode ${nextThemeLabel}`}
+            tabIndex={isNavigationOpen ? 0 : -1}
           >
-            {item.label}
-          </a>
-        ))}
-      </nav>
+            <ThemeIcon size={16} />
+            <span>{themeLabel}</span>
+          </button>
+          <button
+            className="language-toggle"
+            type="button"
+            onClick={onToggleLanguage}
+            aria-label={`${ui.languageToggleLabel}: ${ui.switchTo}`}
+            title={`${ui.languageToggleLabel}: ${ui.switchTo}`}
+            tabIndex={isNavigationOpen ? 0 : -1}
+          >
+            <span>{language.toUpperCase()}</span>
+            <strong>{ui.switchTo}</strong>
+          </button>
+        </div>
+        <div className="laptop-menu-links">
+          {navItemIds.map((id) => {
+            const NavIcon = navIcons[id];
+            return (
+              <a
+                key={id}
+                href={`#${id}`}
+                className={activeSection === id ? "is-active" : undefined}
+                aria-current={activeSection === id ? "page" : undefined}
+                tabIndex={isNavigationOpen ? 0 : -1}
+                onClick={() => setIsNavigationOpen(false)}
+              >
+                <NavIcon size={16} aria-hidden="true" />
+                <span>{ui.nav[id]}</span>
+              </a>
+            );
+          })}
+        </div>
+      </motion.nav>
     </header>
   );
 }
@@ -2129,14 +2641,7 @@ function useActiveSection(sectionIds: string[]) {
   return activeSection;
 }
 
-function Hero({ content }: { content: SiteContent }) {
-  const [terminalReady, setTerminalReady] = useState(false);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setTerminalReady(true), 350);
-    return () => window.clearTimeout(timer);
-  }, []);
-
+function Hero({ content, ui }: { content: SiteContent; ui: UiCopy }) {
   return (
     <section className="hero section immersive-hero" id="top">
       <div className="hero-stage" aria-hidden="true">
@@ -2145,92 +2650,141 @@ function Hero({ content }: { content: SiteContent }) {
         <span />
       </div>
       <motion.div
-        className="hero-copy"
+        className="hero-portrait"
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8 }}
+        aria-label="Portrait de Victoire Sawadogo"
       >
-        <div className="hero-intro">
-          <ProfileImage />
-          <div>
-            <p className="eyebrow">
-              <Terminal size={16} /> {content.heroEyebrow}
-            </p>
-            <span>{content.profileCaption}</span>
+        <img src="/portrait.jpeg" alt="Portrait de Victoire Sawadogo" />
+        <div className="hero-image-panel">
+          <span className="hero-boot">{ui.heroBoot}</span>
+          <p className="eyebrow">
+            <Terminal size={16} /> {content.heroEyebrow}
+          </p>
+          <h1>{content.heroTitle}</h1>
+          <p className="hero-lead">{content.heroLead}</p>
+          <div className="hero-actions">
+            <a className="primary-action" href="#projets">
+              {ui.heroProjects} <ArrowUpRight size={18} />
+            </a>
+            <a className="secondary-action" href="#contact">
+              {ui.heroContact}
+            </a>
           </div>
         </div>
-        <h1>{content.heroTitle}</h1>
-        <p className="hero-lead">{content.heroLead}</p>
-        <div className="hero-metrics">
-          {content.metrics.map(([label, value]) => (
-            <div key={label}>
-              <strong>{label}</strong>
-              <span>{value}</span>
-            </div>
-          ))}
+        <div className="hero-portrait-caption">
+          <span>Victoire Sawadogo</span>
+          <strong>{content.profileCaption}</strong>
         </div>
-        <div className="hero-actions">
-          <a className="primary-action" href="#projets">
-            Voir les projets <ArrowUpRight size={18} />
-          </a>
-          <a className="secondary-action" href="#contact">
-            Me contacter
-          </a>
-        </div>
-        <QuickAccess />
       </motion.div>
 
-      <motion.div
-        className="hero-visual"
-        initial={{ opacity: 0, scale: 0.96 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.9, delay: 0.1 }}
-        aria-label="Portrait professionnel et terminal de développeur"
-      >
-        {terminalReady ? <TerminalPanel content={content} /> : <TerminalPanelFallback />}
-      </motion.div>
-      <TechMarquee items={content.techMarquee} />
+      <div className="hero-metrics hero-metrics-inline" aria-label="Résumé des compétences">
+        {content.metrics.map(([label, value]) => (
+          <div key={label}>
+            <strong>{label}</strong>
+            <span>{value}</span>
+          </div>
+        ))}
+      </div>
+
+      <TechMarquee items={content.techMarquee} ui={ui} />
     </section>
+  );
+}
+
+function RecruiterBrief({ ui }: { ui: UiCopy }) {
+  const links = [
+    { label: ui.recruiterBriefLinks.projects, href: "#projets", icon: BriefcaseBusiness },
+    { label: ui.recruiterBriefLinks.resume, href: "#cv", icon: FileText },
+    { label: ui.recruiterBriefLinks.contact, href: "#contact", icon: Mail },
+  ];
+
+  return (
+    <section className="recruiter-brief" aria-label={ui.recruiterBriefAria}>
+      <div className="recruiter-brief-copy">
+        <span>{ui.recruiterBriefTitle}</span>
+        <p>{ui.recruiterBriefIntro}</p>
+      </div>
+      <div className="recruiter-brief-items">
+        {ui.recruiterBriefItems.map(([label, value]) => (
+          <article key={label}>
+            <strong>{label}</strong>
+            <span>{value}</span>
+          </article>
+        ))}
+      </div>
+      <nav className="recruiter-brief-links" aria-label={ui.recruiterBriefAria}>
+        {links.map(({ label, href, icon: Icon }) => (
+          <a key={href} href={href}>
+            <Icon size={16} />
+            <span>{label}</span>
+          </a>
+        ))}
+      </nav>
+    </section>
+  );
+}
+
+function SystemConstellation({ content }: { content: SiteContent }) {
+  const projectNodes = content.projects.slice(0, 4);
+
+  return (
+    <div className="system-constellation" aria-hidden="true">
+      <div className="constellation-core">
+        <ProfileImage />
+        <span>VS</span>
+      </div>
+      <div className="constellation-ring one" />
+      <div className="constellation-ring two" />
+      {projectNodes.map((project, index) => (
+        <div className={`constellation-node node-${index + 1}`} key={project.name}>
+          <strong>{project.name.slice(0, 2).toUpperCase()}</strong>
+          <span>{project.tags[0] || "build"}</span>
+        </div>
+      ))}
+      <div className="constellation-thread thread-one" />
+      <div className="constellation-thread thread-two" />
+      <div className="constellation-thread thread-three" />
+    </div>
   );
 }
 
 function QuickAccess() {
   const links = [
-    { label: "Projets", detail: "Voir les réalisations", href: "#projets", icon: BriefcaseBusiness },
-    { label: "CV", detail: "Consulter ou télécharger", href: "#cv", icon: FileText },
-    { label: "Contact", detail: "Email, GitHub, LinkedIn", href: "#contact", icon: Mail },
-    { label: "Gestion", detail: "Espace privé", href: "/login", icon: LockKeyhole },
+    { label: "Projets", href: "#projets", icon: BriefcaseBusiness },
+    { label: "CV", href: "#cv", icon: FileText },
+    { label: "Certifications", href: "#certifications", icon: ShieldCheck },
+    { label: "Contact", href: "#contact", icon: Mail },
+    { label: "Gestion", href: "/login", icon: LockKeyhole },
   ];
 
   return (
     <nav className="quick-access" aria-label="Accès rapides">
-      {links.map(({ label, detail, href, icon: Icon }) => (
-        <a key={label} href={href}>
+      {links.map(({ label, href, icon: Icon }) => (
+        <a key={label} href={href} aria-label={`Accès rapide ${label}`}>
           <Icon size={18} />
-          <span>
-            <strong>{label}</strong>
-            <em>{detail}</em>
-          </span>
+          <span>{label}</span>
         </a>
       ))}
     </nav>
   );
 }
 
-function TerminalPanelFallback() {
+function TerminalPanelFallback({ ui }: { ui: UiCopy }) {
   return (
-    <aside className="terminal-panel terminal-panel-loading" aria-label="Chargement de l'atelier interactif">
+    <aside className="terminal-panel terminal-panel-loading" aria-label={ui.terminal.loadingAria}>
       <div className="terminal-top">
         <span />
         <span />
         <span />
-        <strong>Atelier interactif</strong>
-        <em>chargement</em>
+        <strong>{ui.terminal.title}</strong>
+        <em>{ui.terminal.loadingMode}</em>
       </div>
       <div className="terminal-body">
         <div className="terminal-entry">
-          <p>Préparation de l'espace interactif...</p>
-          <p>Chargement des raccourcis du portfolio...</p>
+          <p>{ui.terminal.loadingLineOne}</p>
+          <p>{ui.terminal.loadingLineTwo}</p>
         </div>
       </div>
     </aside>
@@ -2251,13 +2805,7 @@ const shellModeLabels: Record<ShellMode, string> = {
   sql: "sql",
 };
 
-const terminalQuickActions = [
-  { label: "Parcours recruteur", command: "visitor recruiter" },
-  { label: "Voir mes projets", command: "projects" },
-  { label: "Mode développeur", command: "shellctl inspect" },
-];
-
-function TerminalPanel({ content }: { content: SiteContent }) {
+function TerminalPanel({ content, ui }: { content: SiteContent; ui: UiCopy }) {
   const [input, setInput] = useState("");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
@@ -2426,48 +2974,52 @@ function TerminalPanel({ content }: { content: SiteContent }) {
       initial={{ opacity: 0, y: 18, rotate: -1.5 }}
       animate={{ opacity: 1, y: 0, rotate: -1.5 }}
       transition={{ duration: 0.7, delay: 0.35 }}
-      aria-label="Atelier interactif du portfolio"
+      aria-label={ui.terminal.loadingAria}
     >
       <div className="terminal-top">
         <span />
         <span />
         <span />
-        <strong>Atelier interactif</strong>
+        <strong>{ui.terminal.title}</strong>
         <em>{shellModeLabels[mode]}</em>
       </div>
       <div className="terminal-status">
-        <span>profil: {memory.persona}</span>
-        <span>visiteur: {memory.visitor}</span>
-        <span>parcours: {memory.mission || "libre"}</span>
-        <span>aide: {memory.coach ? "active" : "simple"}</span>
+        <span>{ui.terminal.profile}: {memory.persona}</span>
+        <span>{ui.terminal.visitor}: {memory.visitor}</span>
+        <span>{ui.terminal.path}: {memory.mission || "libre"}</span>
+        <span>{ui.terminal.help}: {memory.coach ? ui.terminal.active : ui.terminal.simple}</span>
       </div>
-      <div className="terminal-dashboard" aria-label="Résumé interactif du portfolio">
+      <div className="terminal-dashboard" aria-label={ui.terminal.dashboardAria}>
         <div>
-          <span>objectif</span>
+          <span>{ui.terminal.objective}</span>
           <strong>{memory.goal}</strong>
         </div>
         <div>
-          <span>suite</span>
+          <span>{ui.terminal.next}</span>
           <strong>{getNextBestCommand(memory, content)}</strong>
         </div>
         <div>
-          <span>activité</span>
-          <strong>{memory.commands.length} cmd</strong>
+          <span>{ui.terminal.activity}</span>
+          <strong>{memory.commands.length} {ui.terminal.commands}</strong>
         </div>
       </div>
-      <div className="terminal-quick-actions" aria-label="Parcours rapides">
-        {terminalQuickActions.map((action) => (
+      <div className="terminal-quick-actions" aria-label={ui.terminal.quickActionsAria}>
+        {[
+          { label: ui.terminal.recruiterPath, command: "visitor recruiter" },
+          { label: ui.terminal.viewProjects, command: "projects" },
+          { label: ui.terminal.developerMode, command: "shellctl inspect" },
+        ].map((action) => (
           <button key={action.command} type="button" onClick={() => submitCommand(action.command)}>
             {action.label}
           </button>
         ))}
       </div>
       {paletteOpen ? (
-        <div className="terminal-palette" role="dialog" aria-label="Palette de commandes Atelier">
+        <div className="terminal-palette" role="dialog" aria-label={ui.terminal.paletteAria}>
           <input
             value={paletteQuery}
             onChange={(event) => setPaletteQuery(event.target.value)}
-            placeholder="Chercher une commande, un script, un fichier..."
+            placeholder={ui.terminal.palettePlaceholder}
             autoFocus
           />
           <div>
@@ -2517,7 +3069,7 @@ function TerminalPanel({ content }: { content: SiteContent }) {
               placeholder="help"
               autoComplete="off"
               spellCheck={false}
-              aria-label="Commande du shell interactif"
+              aria-label={ui.terminal.commandInputAria}
             />
           </label>
         </form>
@@ -2583,9 +3135,9 @@ function ProfileImage() {
   );
 }
 
-function TechMarquee({ items }: { items: string[] }) {
+function TechMarquee({ items, ui }: { items: string[]; ui: UiCopy }) {
   return (
-    <div className="tech-marquee" aria-label="Technologies principales">
+    <div className="tech-marquee" aria-label={ui.techMarqueeAria}>
       <motion.div
         animate={{ x: ["0%", "-50%"] }}
         transition={{ duration: 28, ease: "linear", repeat: Infinity }}
@@ -2598,18 +3150,18 @@ function TechMarquee({ items }: { items: string[] }) {
   );
 }
 
-function About({ content }: { content: SiteContent }) {
+function About({ content, ui }: { content: SiteContent; ui: UiCopy }) {
   return (
     <RevealSection className="about section" id="profil">
-      <div className="section-kicker">Profil</div>
+      <div className="section-kicker">{ui.sectionKickers.profile}</div>
       <div className="split">
         <h2>{content.aboutTitle}</h2>
         <div className="body-copy">
           {content.aboutParagraphs.map((paragraph) => (
             <p key={paragraph}>{paragraph}</p>
           ))}
-          <div className="command-strip" aria-label="Méthode de travail">
-            {workflowCommands.map(([step, command, detail]) => (
+          <div className="command-strip" aria-label={ui.workflowAria}>
+            {ui.workflowCommands.map(([step, command, detail]) => (
               <article key={command}>
                 <span>{step}</span>
                 <code>{command}</code>
@@ -2623,12 +3175,12 @@ function About({ content }: { content: SiteContent }) {
   );
 }
 
-function Identity({ content }: { content: SiteContent }) {
+function Identity({ content, ui }: { content: SiteContent; ui: UiCopy }) {
   return (
     <RevealSection className="identity section" id="identite">
       <div className="section-heading">
         <div>
-          <div className="section-kicker">Identité en ligne</div>
+          <div className="section-kicker">{ui.sectionKickers.identity}</div>
           <h2>{content.identityTitle}</h2>
         </div>
         <p>{content.identityIntro}</p>
@@ -2645,12 +3197,12 @@ function Identity({ content }: { content: SiteContent }) {
   );
 }
 
-function Journey({ content }: { content: SiteContent }) {
+function Journey({ content, ui }: { content: SiteContent; ui: UiCopy }) {
   return (
     <RevealSection className="journey section" id="parcours">
       <div className="section-heading">
         <div>
-          <div className="section-kicker">Parcours</div>
+          <div className="section-kicker">{ui.sectionKickers.journey}</div>
           <h2>{content.journeyTitle}</h2>
         </div>
         <p>{content.journeyIntro}</p>
@@ -2658,12 +3210,12 @@ function Journey({ content }: { content: SiteContent }) {
       <div className="journey-grid">
         <TimelineColumn
           icon={<BriefcaseBusiness size={20} />}
-          title="Parcours professionnel"
+          title={ui.journeyProfessional}
           items={content.professionalTimeline}
         />
         <TimelineColumn
           icon={<GraduationCap size={20} />}
-          title="Parcours académique"
+          title={ui.journeyAcademic}
           items={content.academicTimeline}
         />
       </div>
@@ -2699,22 +3251,19 @@ function TimelineColumn({
   );
 }
 
-function Stack({ content }: { content: SiteContent }) {
+function Stack({ content, ui }: { content: SiteContent; ui: UiCopy }) {
   return (
     <RevealSection className="section" id="stack">
       <div className="section-heading">
         <div>
-          <div className="section-kicker">Stack technique</div>
-          <h2>Les outils que j'utilise pour livrer proprement.</h2>
+          <div className="section-kicker">{ui.sectionKickers.stack}</div>
+          <h2>{ui.stackTitle}</h2>
         </div>
-        <p>
-          Une base web, mobile et backend pour construire, tester et faire évoluer
-          les projets sans perdre en lisibilité.
-        </p>
+        <p>{ui.stackIntro}</p>
       </div>
       <div className="stack-grid">
-        {content.stacks.map(({ title, icon, items }) => {
-          const Icon = stackIcons[title as keyof typeof stackIcons] || icon || Layers3;
+        {content.stacks.map(({ title, items }) => {
+          const Icon = stackIcons[title as keyof typeof stackIcons] || Layers3;
           return (
           <article className="stack-card" key={title}>
             <div className="stack-icon">
@@ -2737,12 +3286,16 @@ function Stack({ content }: { content: SiteContent }) {
   );
 }
 
-function Projects({ content }: { content: SiteContent }) {
+function Projects({ content, ui, language }: { content: SiteContent; ui: UiCopy; language: Language }) {
   const [selectedProject, setSelectedProject] = useState<ProjectItem | null>(null);
   const [projectQuery, setProjectQuery] = useState("");
-  const [activeProjectTag, setActiveProjectTag] = useState("Tous");
-  const projectTags = getProjectTags(content.projects);
-  const filteredProjects = filterProjects(content.projects, projectQuery, activeProjectTag);
+  const [activeProjectTag, setActiveProjectTag] = useState(ui.allProjects);
+  const projectTags = getProjectTags(content.projects, ui.allProjects);
+  const filteredProjects = filterProjects(content.projects, projectQuery, activeProjectTag, ui.allProjects);
+
+  useEffect(() => {
+    setActiveProjectTag(ui.allProjects);
+  }, [ui.allProjects]);
 
   useEffect(() => {
     function handleProjectIntent(event: Event) {
@@ -2751,14 +3304,14 @@ function Projects({ content }: { content: SiteContent }) {
       const project = content.projects.find((item) => item.name === detail.projectName);
       if (!project) return;
       setProjectQuery("");
-      setActiveProjectTag("Tous");
+      setActiveProjectTag(ui.allProjects);
       document.getElementById("projets")?.scrollIntoView({ behavior: "smooth", block: "start" });
       setSelectedProject(project);
     }
 
     window.addEventListener("victoire-os:project", handleProjectIntent);
     return () => window.removeEventListener("victoire-os:project", handleProjectIntent);
-  }, [content.projects]);
+  }, [content.projects, ui.allProjects]);
 
   useEffect(() => {
     if (!selectedProject) return;
@@ -2781,24 +3334,24 @@ function Projects({ content }: { content: SiteContent }) {
     <RevealSection className="section" id="projets">
       <div className="section-heading">
         <div>
-          <div className="section-kicker">Projets</div>
-          <h2>Des projets concrets, avec liens et fichiers quand ils sont disponibles.</h2>
+          <div className="section-kicker">{ui.sectionKickers.projects}</div>
+          <h2>{ui.projectsTitle}</h2>
         </div>
         <a className="ghost-link" href="#contact">
-          Discuter d'un projet <ArrowUpRight size={16} />
+          {ui.projectsCta} <ArrowUpRight size={16} />
         </a>
       </div>
-      <div className="project-controls" aria-label="Filtres des projets">
+      <div className="project-controls" aria-label={ui.projectFiltersAria}>
         <label className="project-search">
-          <span>Rechercher</span>
+          <span>{ui.projectSearchLabel}</span>
           <input
             type="search"
             value={projectQuery}
             onChange={(event) => setProjectQuery(event.target.value)}
-            placeholder="Nom, techno, besoin..."
+            placeholder={ui.projectSearchPlaceholder}
           />
         </label>
-        <div className="project-filter-row" role="list" aria-label="Filtrer par tag">
+        <div className="project-filter-row" role="list" aria-label={ui.projectFilterAria}>
           {projectTags.map((tag) => (
             <button
               key={tag}
@@ -2814,13 +3367,13 @@ function Projects({ content }: { content: SiteContent }) {
       <div className="project-grid">
         {filteredProjects.map((project, index) => (
           <motion.article
-            className="project-card"
+            className="project-card project-card-compact"
             key={project.name}
-            whileHover={{ y: -8, rotateX: 5, rotateY: index % 2 === 0 ? -5 : 5 }}
-            transition={{ type: "spring", stiffness: 250, damping: 18 }}
+            whileHover={{ y: -4 }}
+            transition={{ type: "spring", stiffness: 260, damping: 28 }}
             tabIndex={0}
             role="button"
-            aria-label={`Ouvrir le détail du projet ${project.name}`}
+            aria-label={`${ui.projectOpenAria} ${project.name}`}
             onClick={() => setSelectedProject(project)}
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") {
@@ -2829,73 +3382,71 @@ function Projects({ content }: { content: SiteContent }) {
               }
             }}
           >
-            <div className="project-depth" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-            </div>
             <span className="project-index">0{index + 1}</span>
-            <div className="project-status">
-              <GitBranch size={15} />
-              <span>Projet en cours</span>
-            </div>
-            <div className="project-logo" aria-hidden="true">
-              {project.logoUrl ? (
-                <img src={project.logoUrl} alt="" loading="lazy" />
-              ) : (
-                <span>{project.name.slice(0, 2).toUpperCase()}</span>
-              )}
+            <div className="project-card-top">
+              <div className="project-logo" aria-hidden="true">
+                {project.logoUrl ? (
+                  <img src={project.logoUrl} alt="" loading="lazy" />
+                ) : (
+                  <span>{project.name.slice(0, 2).toUpperCase()}</span>
+                )}
+              </div>
+              <div className="project-status">
+                {project.source === "github" ? <Github size={15} /> : <GitBranch size={15} />}
+                <span>{project.source === "github" ? ui.githubLive : ui.projectInProgress}</span>
+              </div>
             </div>
             <p className="project-type">{project.type}</p>
             <strong className="project-focus">{project.focus}</strong>
             <h3>{project.name}</h3>
             <p>{project.description}</p>
             <div className="tag-row">
-              {project.tags.map((tag) => (
+              {project.tags.slice(0, 3).map((tag) => (
                 <span key={tag}>{tag}</span>
               ))}
+              {project.tags.length > 3 ? <span>+{project.tags.length - 3}</span> : null}
             </div>
-            {project.projectUrl || project.apkUrl ? (
-              <div className="project-actions">
-                {project.projectUrl ? (
-                  <a href={project.projectUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
-                    Voir <ArrowUpRight size={15} />
-                  </a>
-                ) : null}
-                {project.apkUrl ? (
-                  <a href={project.apkUrl} download onClick={(event) => event.stopPropagation()}>
-                    APK <Download size={15} />
-                  </a>
-                ) : null}
-              </div>
-            ) : null}
+            <div className="project-card-footer" aria-hidden="true">
+              <span>{ui.view}</span>
+              <ArrowUpRight size={15} />
+            </div>
           </motion.article>
         ))}
       </div>
       {!filteredProjects.length ? (
         <div className="project-empty-state">
-          <strong>Aucun projet trouvé</strong>
-          <p>Essaie un autre mot-clé ou reviens sur le filtre Tous.</p>
+          <strong>{ui.noProjectTitle}</strong>
+          <p>{ui.noProjectText}</p>
           <button
             className="secondary-action button-action"
             type="button"
             onClick={() => {
               setProjectQuery("");
-              setActiveProjectTag("Tous");
+              setActiveProjectTag(ui.allProjects);
             }}
           >
-            Réinitialiser
+            {ui.reset}
           </button>
         </div>
       ) : null}
       {selectedProject ? (
-        <ProjectDetailModal project={selectedProject} onClose={() => setSelectedProject(null)} />
+        <ProjectDetailModal project={selectedProject} onClose={() => setSelectedProject(null)} ui={ui} language={language} />
       ) : null}
     </RevealSection>
   );
 }
 
-function ProjectDetailModal({ project, onClose }: { project: ProjectItem; onClose: () => void }) {
+function ProjectDetailModal({
+  project,
+  onClose,
+  ui,
+  language,
+}: {
+  project: ProjectItem;
+  onClose: () => void;
+  ui: UiCopy;
+  language: Language;
+}) {
   const screenshots = project.screenshots || [];
   const cover = screenshots[0]?.url || project.logoUrl || "";
 
@@ -2911,12 +3462,12 @@ function ProjectDetailModal({ project, onClose }: { project: ProjectItem; onClos
         transition={{ duration: 0.22 }}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <button className="modal-close" type="button" onClick={onClose} aria-label="Fermer">
+        <button className="modal-close" type="button" onClick={onClose} aria-label={ui.close}>
           ×
         </button>
         <div className="project-modal-media">
           {cover ? (
-            <img src={cover} alt={screenshots[0]?.alt || `Aperçu du projet ${project.name}`} />
+            <img src={cover} alt={screenshots[0]?.alt || `${ui.projectPreviewAlt} ${project.name}`} />
           ) : (
             <div className="project-modal-placeholder">{project.name.slice(0, 2).toUpperCase()}</div>
           )}
@@ -2926,27 +3477,40 @@ function ProjectDetailModal({ project, onClose }: { project: ProjectItem; onClos
           <h3 id="project-modal-title">{project.name}</h3>
           <strong>{project.focus}</strong>
           <p>{project.detail || project.description}</p>
+          {project.source === "github" ? (
+            <div className="github-project-meta modal-meta" aria-label={`Métadonnées GitHub pour ${project.name}`}>
+              {project.githubRepo ? <span>{project.githubRepo}</span> : null}
+              {project.githubUpdatedAt ? <span>{ui.updatedLong} {formatRelativeProjectDate(project.githubUpdatedAt, language)}</span> : null}
+              <span>{project.githubStars || 0} {(project.githubStars || 0) > 1 ? ui.stars : ui.star}</span>
+              <span>{project.githubForks || 0} {(project.githubForks || 0) > 1 ? ui.forks : ui.fork}</span>
+            </div>
+          ) : null}
           <div className="tag-row">
             {project.tags.map((tag) => (
               <span key={tag}>{tag}</span>
             ))}
           </div>
           {screenshots.length > 1 ? (
-            <div className="project-gallery" aria-label="Captures du projet">
+            <div className="project-gallery" aria-label={ui.projectGalleryAria}>
               {screenshots.slice(1).map((screenshot, index) => (
-                <img key={`${screenshot.url}-${index}`} src={screenshot.url} alt={screenshot.alt || `Capture ${index + 2} du projet ${project.name}`} />
+                <img key={`${screenshot.url}-${index}`} src={screenshot.url} alt={screenshot.alt || `${ui.projectScreenshotAlt} ${index + 2} - ${project.name}`} />
               ))}
             </div>
           ) : null}
           <div className="project-modal-actions">
             {project.projectUrl ? (
               <a className="primary-action" href={project.projectUrl} target="_blank" rel="noreferrer">
-                Voir le projet <ArrowUpRight size={18} />
+                {ui.viewProject} <ArrowUpRight size={18} />
               </a>
             ) : null}
             {project.apkUrl ? (
               <a className="secondary-action" href={project.apkUrl} download>
-                Télécharger l'APK <Download size={18} />
+                {ui.downloadApk} <Download size={18} />
+              </a>
+            ) : null}
+            {project.githubUrl && project.githubUrl !== project.projectUrl ? (
+              <a className="secondary-action" href={project.githubUrl} target="_blank" rel="noreferrer">
+                {ui.viewCode} <Github size={18} />
               </a>
             ) : null}
           </div>
@@ -2956,7 +3520,19 @@ function ProjectDetailModal({ project, onClose }: { project: ProjectItem; onClos
   );
 }
 
-function CvSection() {
+function formatRelativeProjectDate(value: string, language: Language) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(language === "fr" ? "fr-FR" : "en-US", {
+    month: "short",
+    year: "numeric",
+  }).format(date);
+}
+
+function CvSection({ ui }: { ui: UiCopy }) {
   const [cvInfo, setCvInfo] = useState<CvInfo | null>(null);
 
   useEffect(() => {
@@ -2979,32 +3555,29 @@ function CvSection() {
       <div className="section-heading">
         <div>
           <div className="section-kicker">CV</div>
-          <h2>Un CV consultable et téléchargeable.</h2>
+          <h2>{ui.cvTitle}</h2>
         </div>
         <div className="cv-actions">
           <a className="secondary-action" href={cvUrl} target="_blank" rel="noreferrer">
-            <Eye size={18} /> Visionner
+            <Eye size={18} /> {ui.cvView}
           </a>
           <a className="primary-action" href={cvUrl} download>
-            <Download size={18} /> Télécharger
+            <Download size={18} /> {ui.cvDownload}
           </a>
         </div>
       </div>
       <div className="cv-viewer">
-        {cvInfo?.type === "pdf" ? (
-          <object data={cvInfo.url} type="application/pdf" aria-label="CV au format PDF">
-            <a href={cvInfo.url}>Ouvrir le CV au format PDF</a>
-          </object>
-        ) : cvInfo?.type === "image" ? (
-          <img className="cv-image-preview" src={cvInfo.url} alt="CV uploadé" />
+        {cvInfo ? (
+          <div className="cv-empty cv-link-panel">
+            <FileText size={44} />
+            <h3>{ui.cvAvailableTitle}</h3>
+            <p>{ui.cvAvailableText}</p>
+          </div>
         ) : (
           <div className="cv-empty">
             <FileText size={44} />
-            <h3>CV pas encore ajouté</h3>
-            <p>
-              Ajoute ton CV depuis l'espace de gestion. Les formats PDF, JPG,
-              PNG et WEBP seront visibles ici.
-            </p>
+            <h3>{ui.cvMissingTitle}</h3>
+            <p>{ui.cvMissingText}</p>
           </div>
         )}
       </div>
@@ -3012,15 +3585,80 @@ function CvSection() {
   );
 }
 
-function Lab({ content }: { content: SiteContent }) {
+function CertificationsSection({ ui }: { ui: UiCopy }) {
+  const [certificationsInfo, setCertificationsInfo] = useState<CvInfo | null>(null);
+
+  useEffect(() => {
+    fetch(`/certifications-manifest.json?t=${Date.now()}`)
+      .then((response) => (response.ok ? readJsonResponse(response) : Promise.reject()))
+      .then((data) => setCertificationsInfo(data))
+      .catch(() => {
+        fetch("/certifications.pdf", { method: "HEAD" })
+          .then((response) => {
+            setCertificationsInfo(response.ok ? { url: "/certifications.pdf", type: "pdf" } : null);
+          })
+          .catch(() => setCertificationsInfo(null));
+      });
+  }, []);
+
+  const certificationsUrl = certificationsInfo?.url || "/certifications.pdf";
+
   return (
-    <RevealSection className="lab section" id="labo">
-      <div className="lab-panel">
+    <RevealSection className="certifications-section cv-section section" id="certifications">
+      <div className="section-heading">
         <div>
-          <div className="section-kicker">Atelier produit</div>
+          <div className="section-kicker">{ui.certificationsKicker}</div>
+          <h2>{ui.certificationsTitle}</h2>
+        </div>
+        {certificationsInfo ? (
+          <div className="cv-actions">
+            <a className="secondary-action" href={certificationsUrl} target="_blank" rel="noreferrer">
+              <Eye size={18} /> {ui.certificationsView}
+            </a>
+          </div>
+        ) : null}
+      </div>
+      <div className="cv-viewer">
+        {certificationsInfo ? (
+          <div className="cv-empty cv-link-panel">
+            <FileText size={44} />
+            <h3>{ui.certificationsAvailableTitle}</h3>
+            <p>{ui.certificationsAvailableText}</p>
+          </div>
+        ) : (
+          <div className="cv-empty">
+            <FileText size={44} />
+            <h3>{ui.certificationsMissingTitle}</h3>
+            <p>{ui.certificationsMissingText}</p>
+          </div>
+        )}
+      </div>
+    </RevealSection>
+  );
+}
+
+function Lab({ content, ui }: { content: SiteContent; ui: UiCopy }) {
+  return (
+    <RevealSection className="lab section atelier-section" id="labo">
+      <div className="atelier-heading">
+        <div>
+          <div className="section-kicker">{ui.sectionKickers.lab}</div>
           <h2>{content.labTitle}</h2>
           <p>{content.labIntro}</p>
-          <div className="lab-console" aria-label="Cycle de recherche et développement">
+        </div>
+      </div>
+
+      <div className="atelier-grid">
+        <div className="atelier-terminal-card">
+          <div className="atelier-card-header">
+            <span>{ui.labSession}</span>
+            <strong>{ui.labOs}</strong>
+          </div>
+          <TerminalPanel content={content} ui={ui} />
+        </div>
+
+        <div className="atelier-side">
+          <div className="lab-console atelier-console" aria-label={ui.labCycleAria}>
             <div>
               <Activity size={16} />
               <code>watch ideas --iterate</code>
@@ -3030,25 +3668,26 @@ function Lab({ content }: { content: SiteContent }) {
               <code>prototype --fast --human</code>
             </div>
           </div>
-        </div>
-        <div className="lab-list">
-          {content.labs.map((item) => (
-            <div key={item}>
-              <Rocket size={18} />
-              <span>{item}</span>
-            </div>
-          ))}
+
+          <div className="lab-list atelier-list">
+            {content.labs.map((item) => (
+              <div key={item}>
+                <Rocket size={18} />
+                <span>{item}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </RevealSection>
   );
 }
 
-function Contact({ content }: { content: SiteContent }) {
+function Contact({ content, ui }: { content: SiteContent; ui: UiCopy }) {
   return (
     <RevealSection className="contact section" id="contact">
       <div>
-        <div className="section-kicker">Contact</div>
+        <div className="section-kicker">{ui.sectionKickers.contact}</div>
         <h2>{content.contactTitle}</h2>
         <p>{content.contactText}</p>
       </div>
@@ -3079,19 +3718,38 @@ function RevealSection({
   className: string;
   id?: string;
 }) {
+  const viewLabel = id ? sectionViewLabels[id] || id : "view";
+
   return (
     <motion.section
       className={className}
       id={id}
-      initial={{ opacity: 0, y: 32 }}
+      initial={{ opacity: 0, y: 18 }}
       whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "-80px" }}
-      transition={{ duration: 0.7 }}
+      viewport={{ once: true, margin: "-60px" }}
+      transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
     >
+      {id ? (
+        <div className="section-rail" aria-hidden="true">
+          <span>{viewLabel}</span>
+          <strong>{id}</strong>
+        </div>
+      ) : null}
       {children}
     </motion.section>
   );
 }
+
+const sectionViewLabels: Record<string, string> = {
+  profil: "profil.log",
+  identite: "identity.core",
+  parcours: "timeline.trace",
+  stack: "stack.map",
+  projets: "projects.dir",
+  cv: "cv.preview",
+  labo: "lab.queue",
+  contact: "contact.route",
+};
 
 function AmbientBackground() {
   return (
