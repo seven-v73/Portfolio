@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import Lenis from "lenis";
 import { motion } from "framer-motion";
 import {
@@ -14,7 +14,6 @@ import {
   GraduationCap,
   Github,
   Home,
-  Laptop,
   Layers3,
   Linkedin,
   LockKeyhole,
@@ -60,6 +59,8 @@ const locales = {
   fr: frLocale,
   en: enLocale,
 } satisfies Record<Language, typeof frLocale>;
+
+const WorldScene = lazy(() => import("./WorldScene"));
 
 const navItemIds = ["top", "profil", "parcours", "stack", "projets", "labo", "cv", "certifications", "contact"] as const;
 const navSectionIds = [...navItemIds];
@@ -469,6 +470,7 @@ function App() {
   const isLoginRoute = window.location.pathname === "/login";
   const [language, setLanguage] = useState<Language>(() => getInitialLanguage());
   const [theme, setTheme] = useState<ThemeMode>(() => getInitialTheme());
+  const [worldMode, setWorldMode] = useState<"explore" | "understand">("explore");
   const locale = locales[language];
   const [content, setContent] = useState<SiteContent>(locale.content);
 
@@ -510,9 +512,7 @@ function App() {
           const data = await readJsonResponse(projectsResponse);
           if (Array.isArray(data.projects) && data.projects.length) {
             const apiProjects = data.projects.map(normalizePublicProject);
-            const nextProjects = language === "en"
-              ? mergeTranslatedAndGithubProjects(nextContent.projects, apiProjects)
-              : apiProjects;
+            const nextProjects = mergePublicProjects(nextContent.projects, apiProjects, language);
             nextContent = {
               ...nextContent,
               projects: nextProjects,
@@ -558,12 +558,13 @@ function App() {
   return isLoginRoute ? (
     <LoginPage />
   ) : (
-    <main className="site-shell">
+    <main className="site-shell seven-world" data-world-mode={worldMode}>
       <ScrollProgress />
       <a className="skip-link" href="#profil">
         {locale.ui.skipLink}
       </a>
       <AmbientBackground />
+      <WorldGuide mode={worldMode} onChangeMode={setWorldMode} />
       <Header
         language={language}
         theme={theme}
@@ -571,7 +572,7 @@ function App() {
         onToggleLanguage={() => setLanguage(language === "fr" ? "en" : "fr")}
         onToggleTheme={() => setTheme(theme === "dark" ? "light" : "dark")}
       />
-      <Hero content={content} ui={locale.ui} />
+      <Hero content={content} ui={locale.ui} worldMode={worldMode} />
       <RecruiterBrief ui={locale.ui} />
       <About content={content} ui={locale.ui} />
       <Identity content={content} ui={locale.ui} />
@@ -583,6 +584,52 @@ function App() {
       <CertificationsSection ui={locale.ui} />
       <Contact content={content} ui={locale.ui} />
     </main>
+  );
+}
+
+function WorldGuide({
+  mode,
+  onChangeMode,
+}: {
+  mode: "explore" | "understand";
+  onChangeMode: (mode: "explore" | "understand") => void;
+}) {
+  const zones = [
+    ["profil", "Le Noyau"],
+    ["stack", "La Bibliothèque"],
+    ["projets", "Le Laboratoire"],
+    ["parcours", "Les Archives"],
+    ["labo", "SevenOS"],
+    ["contact", "Le Portail"],
+  ];
+
+  return (
+    <aside className="world-guide" aria-label="Carte de Seven World">
+      <div className="world-mode" role="group" aria-label="Mode de visite">
+        <button
+          className={mode === "explore" ? "is-active" : undefined}
+          type="button"
+          onClick={() => onChangeMode("explore")}
+        >
+          Explorer
+        </button>
+        <button
+          className={mode === "understand" ? "is-active" : undefined}
+          type="button"
+          onClick={() => onChangeMode("understand")}
+        >
+          Comprendre
+        </button>
+      </div>
+      <nav className="world-zones" aria-label="Zones du monde">
+        {zones.map(([id, label], index) => (
+          <a href={`#${id}`} key={id} aria-label={label}>
+            <span>{String(index + 1).padStart(2, "0")}</span>
+            <strong>{label}</strong>
+          </a>
+        ))}
+      </nav>
+    </aside>
   );
 }
 
@@ -793,6 +840,20 @@ function mergeTranslatedAndGithubProjects(translatedProjects: ProjectItem[], api
   return [
     ...translatedProjects,
     ...githubProjects.filter((project) => !translatedNames.has(project.name.toLowerCase())),
+  ];
+}
+
+function mergePublicProjects(fallbackProjects: ProjectItem[], apiProjects: ProjectItem[], language: Language) {
+  if (language === "en") {
+    return mergeTranslatedAndGithubProjects(fallbackProjects, apiProjects);
+  }
+
+  const apiByName = new Map(apiProjects.map((project) => [project.name.toLowerCase(), project]));
+  const fallbackNames = new Set(fallbackProjects.map((project) => project.name.toLowerCase()));
+
+  return [
+    ...fallbackProjects.map((project) => apiByName.get(project.name.toLowerCase()) || project),
+    ...apiProjects.filter((project) => !fallbackNames.has(project.name.toLowerCase())),
   ];
 }
 
@@ -2509,18 +2570,13 @@ function Header({
 
   return (
     <header
-      className={`topbar floating-laptop-bar ${isNavigationOpen ? "is-nav-open" : ""}`}
+      className={`topbar floating-laptop-bar world-header ${isNavigationOpen ? "is-nav-open" : ""}`}
       ref={headerRef}
       style={{ left: widgetPosition.x, top: widgetPosition.y }}
     >
-      <span className="laptop-drag-handle" aria-hidden="true">
-        <span />
-        <span />
-        <span />
-      </span>
       <div className="floating-laptop-nav">
         <button
-          className="laptop-trigger"
+          className="laptop-trigger world-compass-trigger"
           type="button"
           aria-expanded={isNavigationOpen}
           aria-controls="floating-laptop-screen"
@@ -2535,13 +2591,14 @@ function Header({
             setIsNavigationOpen((current) => !current);
           }}
         >
-          <span className="laptop-lid">
-            <span className="laptop-camera" />
-            <Laptop size={34} />
-            <span className="laptop-signal" />
+          <span className="world-compass" aria-hidden="true">
+            <i />
+            <i />
+            <i />
           </span>
-          <span className="laptop-base">
-            <span />
+          <span className="world-trigger-copy">
+            <strong>SEVEN</strong>
+            <small>WORLD</small>
           </span>
         </button>
       </div>
@@ -2560,7 +2617,7 @@ function Header({
         transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
       >
         <div className="laptop-menu-top">
-          <span>nav.os</span>
+          <span>carte du monde</span>
           <strong>{ui.nav[activeSection]}</strong>
         </div>
         <div className="laptop-menu-controls">
@@ -2641,13 +2698,22 @@ function useActiveSection(sectionIds: string[]) {
   return activeSection;
 }
 
-function Hero({ content, ui }: { content: SiteContent; ui: UiCopy }) {
+function Hero({ content, ui, worldMode }: { content: SiteContent; ui: UiCopy; worldMode: "explore" | "understand" }) {
   return (
     <section className="hero section immersive-hero" id="top">
       <div className="hero-stage" aria-hidden="true">
         <span />
         <span />
         <span />
+        <div className="world-tree">
+          <i className="tree-crown crown-one" />
+          <i className="tree-crown crown-two" />
+          <i className="tree-crown crown-three" />
+          <i className="tree-trunk" />
+          <i className="tree-root root-one" />
+          <i className="tree-root root-two" />
+          <i className="tree-root root-three" />
+        </div>
       </div>
       <motion.div
         className="hero-portrait"
@@ -2657,8 +2723,12 @@ function Hero({ content, ui }: { content: SiteContent; ui: UiCopy }) {
         aria-label="Portrait de Victoire Sawadogo"
       >
         <img src="/portrait.jpeg" alt="Portrait de Victoire Sawadogo" />
+        <Suspense fallback={<div className="world-scene world-scene-fallback" aria-hidden="true" />}>
+          <WorldScene />
+        </Suspense>
         <div className="hero-image-panel">
           <span className="hero-boot">{ui.heroBoot}</span>
+          <span className="hero-world-label">Seven World / {worldMode === "explore" ? "exploration libre" : "lecture guidée"}</span>
           <p className="eyebrow">
             <Terminal size={16} /> {content.heroEyebrow}
           </p>
@@ -3719,6 +3789,7 @@ function RevealSection({
   id?: string;
 }) {
   const viewLabel = id ? sectionViewLabels[id] || id : "view";
+  const worldZone = id ? worldZoneLabels[id] : null;
 
   return (
     <motion.section
@@ -3735,6 +3806,7 @@ function RevealSection({
           <strong>{id}</strong>
         </div>
       ) : null}
+      {worldZone ? <span className="world-zone-name">{worldZone}</span> : null}
       {children}
     </motion.section>
   );
@@ -3749,6 +3821,18 @@ const sectionViewLabels: Record<string, string> = {
   cv: "cv.preview",
   labo: "lab.queue",
   contact: "contact.route",
+};
+
+const worldZoneLabels: Record<string, string> = {
+  profil: "Le Noyau",
+  identite: "Le Sanctuaire",
+  parcours: "Les Archives",
+  stack: "La Bibliothèque",
+  projets: "Le Laboratoire",
+  cv: "Les Archives",
+  certifications: "Les Archives",
+  labo: "SevenOS",
+  contact: "Le Portail",
 };
 
 function AmbientBackground() {

@@ -7,10 +7,11 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          react: ["react", "react-dom"],
           motion: ["framer-motion"],
           icons: ["lucide-react"],
           smooth: ["lenis"],
+          three: ["three"],
+          r3f: ["@react-three/fiber", "@react-three/drei", "@react-three/postprocessing", "postprocessing"],
         },
       },
     },

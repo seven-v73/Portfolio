@@ -81,7 +81,7 @@ export const frLocale: LocaleBundle = {
         text: "Support, maintenance, mobile: ces expériences me rappellent que les bugs, la lenteur et les habitudes comptent autant que la maquette.",
       },
     ],
-    journeyTitle: "Études, support IT et projets livrés.",
+    journeyTitle: "Études, support IT et réalisations concrètes.",
     journeyIntro:
       "Mon parcours relie la formation informatique, le support terrain et des projets web/mobile que je construis jusqu'à une version utilisable.",
     professionalTimeline: [
