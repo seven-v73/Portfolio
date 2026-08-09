@@ -1,5 +1,26 @@
 import { expect, test } from "@playwright/test";
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.clear();
+  });
+  await page.route("**/api/auth/me", (route) => route.fulfill({ status: 401, body: "{}" }));
+  await page.route("**/api/content", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ content: null }),
+    }),
+  );
+  await page.route("**/api/projects", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ projects: [], sources: { manual: 0, github: 0 } }),
+    }),
+  );
+});
+
 test("portfolio public: navigation, recherche projets et contact", async ({ page }) => {
   await page.goto("/");
 
@@ -18,11 +39,6 @@ test("portfolio public: navigation, recherche projets et contact", async ({ page
   await page.getByRole("button", { name: /change language/i }).click();
   await expect(page.locator("html")).toHaveAttribute("lang", "fr");
 
-  await page.getByRole("button", { name: /basculer en mode clair/i }).click();
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-  await page.getByRole("button", { name: /basculer en mode sombre/i }).click();
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-
   const laptop = page.getByRole("button", { name: /fermer la navigation/i });
   const beforeDrag = await page.locator(".floating-laptop-bar").boundingBox();
   const laptopBox = await laptop.boundingBox();
@@ -39,7 +55,8 @@ test("portfolio public: navigation, recherche projets et contact", async ({ page
   await expect(page.getByRole("button", { name: /ouvrir la navigation/i })).toBeVisible();
 
   await page.getByRole("link", { name: "Voir les projets" }).click();
-  await expect(page.getByRole("heading", { name: /projets|contexte/i })).toBeVisible();
+  await expect(page.locator("#projets")).toBeInViewport();
+  await expect(page.locator("#projets").getByRole("heading", { name: /projets|projects/i })).toBeVisible();
   await expect(page.locator(".project-card").first()).toBeVisible();
 
   await page.getByRole("searchbox", { name: "Rechercher" }).fill("zzzzzz");
@@ -48,7 +65,7 @@ test("portfolio public: navigation, recherche projets et contact", async ({ page
   await expect(page.locator(".project-card").first()).toBeVisible();
 
   await page.getByRole("button", { name: /ouvrir la navigation/i }).click();
-  await page.getByLabel("Navigation principale").getByRole("link", { name: "Contact", exact: true }).click();
+  await page.getByLabel("Navigation principale").getByRole("link", { name: "Ensemble", exact: true }).click();
   await expect(page.locator("#contact")).toBeInViewport();
   await expect(page.locator("#contact").getByRole("link", { name: /email/i })).toHaveAttribute("href", "mailto:sawadogovictor12@gmail.com");
   await expect(page.locator("#contact").getByRole("link", { name: /github/i })).toHaveAttribute("href", "https://github.com/seven-v73");
@@ -69,10 +86,10 @@ test("portfolio public: détail projet, CV et fallback API", async ({ page }) =>
   await page.getByRole("button", { name: /ouvrir la navigation/i }).click();
   await page.getByLabel("Navigation principale").getByRole("link", { name: "CV", exact: true }).click();
   await expect(page.locator("#cv")).toBeInViewport();
-  await expect(page.getByRole("link", { name: "Télécharger", exact: true })).toHaveAttribute("href", /cv\.pdf|cv-image/);
+  await expect(page.locator("#cv").getByRole("link", { name: "Télécharger", exact: true })).toHaveAttribute("href", /cv\.pdf|cv-image/);
 
   await page.getByRole("button", { name: /ouvrir la navigation/i }).click();
-  await page.getByLabel("Navigation principale").getByRole("link", { name: "Certifications", exact: true }).click();
+  await page.getByLabel("Navigation principale").getByRole("link", { name: "Repères", exact: true }).click();
   await expect(page.locator("#certifications")).toBeInViewport();
   await expect(page.locator("#certifications").getByRole("link", { name: /Télécharger/i })).toHaveCount(0);
 });
@@ -89,7 +106,6 @@ test("gestion: page de connexion et formulaire admin accessibles", async ({ page
 test("gestion: connexion mockée et sauvegarde du contenu", async ({ page }) => {
   let savedPayload: unknown = null;
 
-  await page.route("**/api/auth/me", (route) => route.fulfill({ status: 401, body: "{}" }));
   await page.route("**/api/auth/login", (route) =>
     route.fulfill({
       status: 200,
@@ -142,13 +158,13 @@ test("VictoireOS: parcours rapides et commande projet", async ({ page }) => {
   await page.locator("#labo").scrollIntoViewIfNeeded();
 
   const terminalActions = page.locator(".terminal-quick-actions");
-  await expect(terminalActions.getByRole("button", { name: "Parcours recruteur" })).toBeVisible();
+  await expect(terminalActions.getByRole("button", { name: "Voir les projets" })).toBeVisible();
 
-  await terminalActions.getByRole("button", { name: "Mode développeur" }).click();
-  await expect(page.getByText("Atelier shell architecture")).toBeVisible();
+  await terminalActions.getByRole("button", { name: "Voir les projets" }).click();
+  await expect(page.locator(".terminal-body").getByText(/ElegantStyle/)).toBeVisible();
 
-  await terminalActions.getByRole("button", { name: "Parcours recruteur" }).click();
-  await expect(page.getByText("visitor: recruiter")).toBeVisible();
+  await terminalActions.getByRole("button", { name: "Lire le profil" }).click();
+  await expect(page.locator(".terminal-body").getByText("Victoire SAWADOGO", { exact: true })).toBeVisible();
 
   await page.getByLabel("Commande du shell interactif").fill("open project elegantstyle");
   await page.keyboard.press("Enter");

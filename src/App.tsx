@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { lazy, Suspense, useEffect, useId, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import Lenis from "lenis";
 import { motion } from "framer-motion";
 import {
@@ -23,9 +23,7 @@ import {
   Rocket,
   ServerCog,
   ShieldCheck,
-  Moon,
   Smartphone,
-  Sun,
   Terminal,
   UserRound,
   type LucideIcon,
@@ -41,10 +39,10 @@ import {
 import { cloneItem, moveItem } from "./utils/collections";
 import { filterProjects, getProjectTags } from "./utils/projectFilters";
 import { resolveShellCommand, type ShellContext } from "./victoire-os/shell/commands";
-import { expandAlias, getBootOutput, toTildePath } from "./victoire-os/shell/core";
-import { getAutopilotPulse, getCoachAdvice } from "./victoire-os/shell/insights";
+import { expandAlias } from "./victoire-os/shell/core";
+import { getCoachAdvice } from "./victoire-os/shell/insights";
 import { loadVictoireMemory, saveVictoireMemory } from "./victoire-os/shell/memory";
-import { getNextBestCommand, updateMemoryAfterCommand } from "./victoire-os/shell/missions";
+import { updateMemoryAfterCommand } from "./victoire-os/shell/missions";
 import {
   completeCommand,
   defaultAliases,
@@ -61,6 +59,7 @@ const locales = {
 } satisfies Record<Language, typeof frLocale>;
 
 const WorldScene = lazy(() => import("./WorldScene"));
+const isE2E = import.meta.env.VITE_E2E === "true";
 
 const navItemIds = ["top", "profil", "parcours", "stack", "projets", "labo", "cv", "certifications", "contact"] as const;
 const navSectionIds = [...navItemIds];
@@ -448,8 +447,6 @@ type CvInfo = {
   uploadedAt?: string;
 };
 
-type ThemeMode = "dark" | "light";
-
 type ProfilePhotoInfo = {
   url: string;
   originalName?: string;
@@ -469,8 +466,6 @@ const stackIcons = {
 function App() {
   const isLoginRoute = window.location.pathname === "/login";
   const [language, setLanguage] = useState<Language>(() => getInitialLanguage());
-  const [theme, setTheme] = useState<ThemeMode>(() => getInitialTheme());
-  const [worldMode, setWorldMode] = useState<"explore" | "understand">("explore");
   const locale = locales[language];
   const [content, setContent] = useState<SiteContent>(locale.content);
 
@@ -480,9 +475,9 @@ function App() {
   }, [language]);
 
   useEffect(() => {
-    localStorage.setItem("portfolio_theme", theme);
-    document.documentElement.dataset.theme = theme;
-  }, [theme]);
+    if (!isE2E) return;
+    document.documentElement.dataset.e2e = "true";
+  }, []);
 
   useEffect(() => {
     if (isLoginRoute) return;
@@ -558,21 +553,18 @@ function App() {
   return isLoginRoute ? (
     <LoginPage />
   ) : (
-    <main className="site-shell seven-world" data-world-mode={worldMode}>
+    <main className="site-shell seven-world">
       <ScrollProgress />
       <a className="skip-link" href="#profil">
         {locale.ui.skipLink}
       </a>
       <AmbientBackground />
-      <WorldGuide mode={worldMode} onChangeMode={setWorldMode} />
       <Header
         language={language}
-        theme={theme}
         ui={locale.ui}
         onToggleLanguage={() => setLanguage(language === "fr" ? "en" : "fr")}
-        onToggleTheme={() => setTheme(theme === "dark" ? "light" : "dark")}
       />
-      <Hero content={content} ui={locale.ui} worldMode={worldMode} />
+      <Hero content={content} ui={locale.ui} />
       <RecruiterBrief ui={locale.ui} />
       <About content={content} ui={locale.ui} />
       <Identity content={content} ui={locale.ui} />
@@ -584,52 +576,6 @@ function App() {
       <CertificationsSection ui={locale.ui} />
       <Contact content={content} ui={locale.ui} />
     </main>
-  );
-}
-
-function WorldGuide({
-  mode,
-  onChangeMode,
-}: {
-  mode: "explore" | "understand";
-  onChangeMode: (mode: "explore" | "understand") => void;
-}) {
-  const zones = [
-    ["profil", "Le Noyau"],
-    ["stack", "La Bibliothèque"],
-    ["projets", "Le Laboratoire"],
-    ["parcours", "Les Archives"],
-    ["labo", "SevenOS"],
-    ["contact", "Le Portail"],
-  ];
-
-  return (
-    <aside className="world-guide" aria-label="Carte de Seven World">
-      <div className="world-mode" role="group" aria-label="Mode de visite">
-        <button
-          className={mode === "explore" ? "is-active" : undefined}
-          type="button"
-          onClick={() => onChangeMode("explore")}
-        >
-          Explorer
-        </button>
-        <button
-          className={mode === "understand" ? "is-active" : undefined}
-          type="button"
-          onClick={() => onChangeMode("understand")}
-        >
-          Comprendre
-        </button>
-      </div>
-      <nav className="world-zones" aria-label="Zones du monde">
-        {zones.map(([id, label], index) => (
-          <a href={`#${id}`} key={id} aria-label={label}>
-            <span>{String(index + 1).padStart(2, "0")}</span>
-            <strong>{label}</strong>
-          </a>
-        ))}
-      </nav>
-    </aside>
   );
 }
 
@@ -665,15 +611,6 @@ function getInitialLanguage(): Language {
   }
 
   return "fr";
-}
-
-function getInitialTheme(): ThemeMode {
-  const storedTheme = localStorage.getItem("portfolio_theme");
-  if (storedTheme === "dark" || storedTheme === "light") {
-    return storedTheme;
-  }
-
-  return "dark";
 }
 
 function mergeContent(content: Partial<SiteContent>, baseContent = defaultContent): SiteContent {
@@ -1933,20 +1870,22 @@ function AdminOverview({
 }
 
 function TextField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  const id = useId();
   return (
-    <label className="editor-field">
-      <span>{label}</span>
-      <input value={value} onChange={(event) => onChange(event.target.value)} />
-    </label>
+    <div className="editor-field">
+      <label htmlFor={id}>{label}</label>
+      <input id={id} value={value} onChange={(event) => onChange(event.target.value)} />
+    </div>
   );
 }
 
 function TextAreaField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  const id = useId();
   return (
-    <label className="editor-field">
-      <span>{label}</span>
-      <textarea rows={3} value={value} onChange={(event) => onChange(event.target.value)} />
-    </label>
+    <div className="editor-field">
+      <label htmlFor={id}>{label}</label>
+      <textarea id={id} rows={3} value={value} onChange={(event) => onChange(event.target.value)} />
+    </div>
   );
 }
 
@@ -2450,22 +2389,14 @@ async function readJsonResponse(response: Response) {
 
 function Header({
   language,
-  theme,
   ui,
   onToggleLanguage,
-  onToggleTheme,
 }: {
   language: Language;
-  theme: ThemeMode;
   ui: UiCopy;
   onToggleLanguage: () => void;
-  onToggleTheme: () => void;
 }) {
   const activeSection = useActiveSection(navSectionIds);
-  const isDarkTheme = theme === "dark";
-  const themeLabel = isDarkTheme ? "Sombre" : "Clair";
-  const nextThemeLabel = isDarkTheme ? "Clair" : "Sombre";
-  const ThemeIcon = isDarkTheme ? Moon : Sun;
   const [isNavigationOpen, setIsNavigationOpen] = useState(false);
   const headerRef = useRef<HTMLElement | null>(null);
   const isNavigationOpenRef = useRef(isNavigationOpen);
@@ -2598,7 +2529,7 @@ function Header({
           </span>
           <span className="world-trigger-copy">
             <strong>SEVEN</strong>
-            <small>WORLD</small>
+            <small>INDEX</small>
           </span>
         </button>
       </div>
@@ -2617,21 +2548,10 @@ function Header({
         transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
       >
         <div className="laptop-menu-top">
-          <span>carte du monde</span>
+          <span>sommaire</span>
           <strong>{ui.nav[activeSection]}</strong>
         </div>
-        <div className="laptop-menu-controls">
-          <button
-            className="theme-toggle"
-            type="button"
-            onClick={onToggleTheme}
-            aria-label={`Basculer en mode ${nextThemeLabel}`}
-            title={`Basculer en mode ${nextThemeLabel}`}
-            tabIndex={isNavigationOpen ? 0 : -1}
-          >
-            <ThemeIcon size={16} />
-            <span>{themeLabel}</span>
-          </button>
+        <div className="laptop-menu-controls single-control">
           <button
             className="language-toggle"
             type="button"
@@ -2698,7 +2618,7 @@ function useActiveSection(sectionIds: string[]) {
   return activeSection;
 }
 
-function Hero({ content, ui, worldMode }: { content: SiteContent; ui: UiCopy; worldMode: "explore" | "understand" }) {
+function Hero({ content, ui }: { content: SiteContent; ui: UiCopy }) {
   return (
     <section className="hero section immersive-hero" id="top">
       <div className="hero-stage" aria-hidden="true">
@@ -2723,12 +2643,16 @@ function Hero({ content, ui, worldMode }: { content: SiteContent; ui: UiCopy; wo
         aria-label="Portrait de Victoire Sawadogo"
       >
         <img src="/portrait.jpeg" alt="Portrait de Victoire Sawadogo" />
-        <Suspense fallback={<div className="world-scene world-scene-fallback" aria-hidden="true" />}>
-          <WorldScene />
-        </Suspense>
+        {isE2E ? (
+          <div className="world-scene world-scene-fallback" aria-hidden="true" />
+        ) : (
+          <Suspense fallback={<div className="world-scene world-scene-fallback" aria-hidden="true" />}>
+            <WorldScene />
+          </Suspense>
+        )}
         <div className="hero-image-panel">
           <span className="hero-boot">{ui.heroBoot}</span>
-          <span className="hero-world-label">Seven World / {worldMode === "explore" ? "exploration libre" : "lecture guidée"}</span>
+          <span className="hero-world-label">Portfolio personnel / lecture éditoriale</span>
           <p className="eyebrow">
             <Terminal size={16} /> {content.heroEyebrow}
           </p>
@@ -2744,7 +2668,7 @@ function Hero({ content, ui, worldMode }: { content: SiteContent; ui: UiCopy; wo
           </div>
         </div>
         <div className="hero-portrait-caption">
-          <span>Victoire Sawadogo</span>
+        <span>Victoire Sawadogo</span>
           <strong>{content.profileCaption}</strong>
         </div>
       </motion.div>
@@ -2867,14 +2791,6 @@ type ShellEntry = {
   output: string[];
 };
 
-const shellModeLabels: Record<ShellMode, string> = {
-  bash: "bash",
-  python: "python",
-  powershell: "powershell",
-  node: "node",
-  sql: "sql",
-};
-
 function TerminalPanel({ content, ui }: { content: SiteContent; ui: UiCopy }) {
   const [input, setInput] = useState("");
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -2885,7 +2801,7 @@ function TerminalPanel({ content, ui }: { content: SiteContent; ui: UiCopy }) {
   const [memory, setMemory] = useState<VictoireMemory>(() => loadVictoireMemory());
   const [entries, setEntries] = useState<ShellEntry[]>([
     {
-      output: getBootOutput(),
+      output: [ui.terminal.loadingLineOne, ui.terminal.loadingLineTwo],
     },
   ]);
   const [history, setHistory] = useState<string[]>([]);
@@ -2912,19 +2828,6 @@ function TerminalPanel({ content, ui }: { content: SiteContent; ui: UiCopy }) {
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
   }, []);
 
-  useEffect(() => {
-    if (!memory.autopilot) return;
-    const timer = window.setInterval(() => {
-      setEntries((current) => [
-        ...current,
-        {
-          output: getAutopilotPulse(content, memory, currentDirectory, current.length),
-        },
-      ]);
-    }, 28000);
-    return () => window.clearInterval(timer);
-  }, [content, currentDirectory, memory]);
-
   function submitCommand(rawCommand = input) {
     const typedCommand = rawCommand.trim();
     const command = expandAlias(typedCommand, aliases);
@@ -2942,11 +2845,7 @@ function TerminalPanel({ content, ui }: { content: SiteContent; ui: UiCopy }) {
     if (command.toLowerCase() === "reboot") {
       setEntries([
         {
-          output: [
-            "[reboot] stopping shell services",
-            "[reboot] preserving local memory",
-            ...getBootOutput(),
-          ],
+          output: [ui.terminal.loadingLineOne, ui.terminal.loadingLineTwo],
         },
       ]);
       setCurrentDirectory("/home/victoire");
@@ -2980,8 +2879,8 @@ function TerminalPanel({ content, ui }: { content: SiteContent; ui: UiCopy }) {
       : commandMemory;
     const coachOutput = nextMemory.coach ? getCoachAdvice(command, result.output, nextMemory, content) : [];
     setEntries((current) => [
-      ...current,
-      { directory: currentDirectory, command: typedCommand, output: [...result.output, ...coachOutput] },
+      ...current.slice(-2),
+      { directory: currentDirectory, command: typedCommand, output: [...result.output, ...coachOutput].slice(0, 8) },
     ]);
     if (result.nextDirectory) {
       setCurrentDirectory(result.nextDirectory);
@@ -3047,37 +2946,18 @@ function TerminalPanel({ content, ui }: { content: SiteContent; ui: UiCopy }) {
       aria-label={ui.terminal.loadingAria}
     >
       <div className="terminal-top">
-        <span />
-        <span />
-        <span />
         <strong>{ui.terminal.title}</strong>
-        <em>{shellModeLabels[mode]}</em>
+        <em>{ui.terminal.simple}</em>
       </div>
-      <div className="terminal-status">
-        <span>{ui.terminal.profile}: {memory.persona}</span>
-        <span>{ui.terminal.visitor}: {memory.visitor}</span>
-        <span>{ui.terminal.path}: {memory.mission || "libre"}</span>
-        <span>{ui.terminal.help}: {memory.coach ? ui.terminal.active : ui.terminal.simple}</span>
-      </div>
-      <div className="terminal-dashboard" aria-label={ui.terminal.dashboardAria}>
-        <div>
-          <span>{ui.terminal.objective}</span>
-          <strong>{memory.goal}</strong>
-        </div>
-        <div>
-          <span>{ui.terminal.next}</span>
-          <strong>{getNextBestCommand(memory, content)}</strong>
-        </div>
-        <div>
-          <span>{ui.terminal.activity}</span>
-          <strong>{memory.commands.length} {ui.terminal.commands}</strong>
-        </div>
+      <div className="terminal-intro">
+        <p>{ui.terminal.loadingLineOne}</p>
+        <span>{ui.terminal.loadingLineTwo}</span>
       </div>
       <div className="terminal-quick-actions" aria-label={ui.terminal.quickActionsAria}>
         {[
-          { label: ui.terminal.recruiterPath, command: "visitor recruiter" },
           { label: ui.terminal.viewProjects, command: "projects" },
-          { label: ui.terminal.developerMode, command: "shellctl inspect" },
+          { label: ui.terminal.recruiterPath, command: "whoami" },
+          { label: ui.terminal.developerMode, command: "hire --contact" },
         ].map((action) => (
           <button key={action.command} type="button" onClick={() => submitCommand(action.command)}>
             {action.label}
@@ -3116,11 +2996,11 @@ function TerminalPanel({ content, ui }: { content: SiteContent; ui: UiCopy }) {
         role="log"
         aria-live="polite"
       >
-        {entries.map((entry, index) => (
+        {entries.slice(-3).map((entry, index) => (
           <div className="terminal-entry" key={`${entry.command || "intro"}-${index}`}>
             {entry.command ? (
               <code className="terminal-command">
-                {renderPrompt(mode, entry.directory || currentDirectory)} {entry.command}
+                {entry.command}
               </code>
             ) : null}
             {entry.output.map((line, lineIndex) => (
@@ -3130,13 +3010,13 @@ function TerminalPanel({ content, ui }: { content: SiteContent; ui: UiCopy }) {
         ))}
         <form className="terminal-form" onSubmit={handleSubmit}>
           <label>
-            {renderPrompt(mode, currentDirectory)}
+            <span>{ui.terminal.help}</span>
             <input
               ref={inputRef}
               value={input}
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="help"
+              placeholder="projects, contact, whoami..."
               autoComplete="off"
               spellCheck={false}
               aria-label={ui.terminal.commandInputAria}
@@ -3145,34 +3025,6 @@ function TerminalPanel({ content, ui }: { content: SiteContent; ui: UiCopy }) {
         </form>
       </div>
     </motion.aside>
-  );
-}
-
-function renderPrompt(mode: ShellMode, directory: string) {
-  if (mode === "python") {
-    return <span className="prompt-python">&gt;&gt;&gt;</span>;
-  }
-
-  if (mode === "powershell") {
-    return (
-      <>
-        <span>PS</span> <strong>{directory}</strong>&gt;
-      </>
-    );
-  }
-
-  if (mode === "node") {
-    return <span className="prompt-node">node&gt;</span>;
-  }
-
-  if (mode === "sql") {
-    return <span className="prompt-sql">portfolio=#</span>;
-  }
-
-  return (
-    <>
-      <span>victoire@sawadogo</span>:<strong>{toTildePath(directory)} main*</strong>$
-    </>
   );
 }
 
@@ -3824,15 +3676,15 @@ const sectionViewLabels: Record<string, string> = {
 };
 
 const worldZoneLabels: Record<string, string> = {
-  profil: "Le Noyau",
-  identite: "Le Sanctuaire",
-  parcours: "Les Archives",
-  stack: "La Bibliothèque",
-  projets: "Le Laboratoire",
-  cv: "Les Archives",
-  certifications: "Les Archives",
-  labo: "SevenOS",
-  contact: "Le Portail",
+  profil: "Vision",
+  identite: "Philosophie",
+  parcours: "Parcours",
+  stack: "Outils",
+  projets: "Systèmes",
+  cv: "CV",
+  certifications: "Repères",
+  labo: "Idées",
+  contact: "Ensemble",
 };
 
 function AmbientBackground() {

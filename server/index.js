@@ -31,7 +31,7 @@ app.use(
         baseUri: ["'self'"],
         connectSrc: ["'self'", ...config.corsOrigins],
         fontSrc: ["'self'", "data:"],
-        imgSrc: ["'self'", "data:", "https://cdn.jsdelivr.net"],
+        imgSrc: ["'self'", "data:", "https:"],
         objectSrc: ["'self'"],
         scriptSrc: ["'self'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
