@@ -9,9 +9,6 @@ export default defineConfig({
         manualChunks: {
           motion: ["framer-motion"],
           icons: ["lucide-react"],
-          smooth: ["lenis"],
-          three: ["three"],
-          r3f: ["@react-three/fiber", "@react-three/drei", "@react-three/postprocessing", "postprocessing"],
         },
       },
     },

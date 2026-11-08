@@ -1,4 +1,13 @@
-import { expect, test } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
+import { expect, test, type Page } from "@playwright/test";
+
+async function navigateTo(page: Page, name: string) {
+  const menuButton = page.getByRole("button", { name: /ouvrir le menu|open menu/i });
+  if (await menuButton.isVisible()) {
+    await menuButton.click();
+  }
+  await page.getByRole("navigation", { name: /navigation principale|main navigation|^menu$/i }).getByRole("link", { name, exact: true }).click();
+}
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -29,9 +38,8 @@ test("portfolio public: navigation, recherche projets et contact", async ({ page
   await expect(page.getByRole("link", { name: "Me contacter" })).toBeVisible();
   const recruiterBrief = page.getByRole("region", { name: "Résumé rapide pour recruteur" });
   await expect(recruiterBrief).toBeVisible();
-  await expect(recruiterBrief.getByRole("link", { name: /3 projets clés/i })).toHaveAttribute("href", "#projets");
+  await expect(recruiterBrief.getByRole("link", { name: /projets clés/i })).toHaveAttribute("href", "#projets");
 
-  await page.getByRole("button", { name: /ouvrir la navigation/i }).click();
   await page.getByRole("button", { name: /changer la langue/i }).click();
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await expect(page.getByRole("link", { name: "View projects" })).toBeVisible();
@@ -39,20 +47,10 @@ test("portfolio public: navigation, recherche projets et contact", async ({ page
   await page.getByRole("button", { name: /change language/i }).click();
   await expect(page.locator("html")).toHaveAttribute("lang", "fr");
 
-  const laptop = page.getByRole("button", { name: /fermer la navigation/i });
-  const beforeDrag = await page.locator(".floating-laptop-bar").boundingBox();
-  const laptopBox = await laptop.boundingBox();
-  expect(beforeDrag).not.toBeNull();
-  expect(laptopBox).not.toBeNull();
-  await page.mouse.move(laptopBox!.x + laptopBox!.width / 2, laptopBox!.y + laptopBox!.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(laptopBox!.x + 120, laptopBox!.y + 90, { steps: 8 });
-  await page.mouse.up();
-  const afterDrag = await page.locator(".floating-laptop-bar").boundingBox();
-  expect(afterDrag).not.toBeNull();
-  expect(Math.max(Math.abs(afterDrag!.x - beforeDrag!.x), Math.abs(afterDrag!.y - beforeDrag!.y))).toBeGreaterThan(40);
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("button", { name: /ouvrir la navigation/i })).toBeVisible();
+  await page.getByRole("button", { name: /thème sombre/i }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.getByRole("button", { name: /thème clair/i }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
 
   await page.getByRole("link", { name: "Voir les projets" }).click();
   await expect(page.locator("#projets")).toBeInViewport();
@@ -64,8 +62,7 @@ test("portfolio public: navigation, recherche projets et contact", async ({ page
   await page.getByRole("button", { name: "Réinitialiser" }).click();
   await expect(page.locator(".project-card").first()).toBeVisible();
 
-  await page.getByRole("button", { name: /ouvrir la navigation/i }).click();
-  await page.getByLabel("Navigation principale").getByRole("link", { name: "Ensemble", exact: true }).click();
+  await navigateTo(page, "Contact");
   await expect(page.locator("#contact")).toBeInViewport();
   await expect(page.locator("#contact").getByRole("link", { name: /email/i })).toHaveAttribute("href", "mailto:sawadogovictor12@gmail.com");
   await expect(page.locator("#contact").getByRole("link", { name: /github/i })).toHaveAttribute("href", "https://github.com/seven-v73");
@@ -79,19 +76,25 @@ test("portfolio public: détail projet, CV et fallback API", async ({ page }) =>
 
   await page.getByRole("button", { name: /ouvrir le détail du projet elegantstyle/i }).click();
   await expect(page.getByRole("dialog", { name: "ElegantStyle" })).toBeVisible();
-  await expect(page.getByRole("dialog").getByText("Stylisme virtuel", { exact: true })).toBeVisible();
+  await expect(page.getByRole("dialog").getByText("Marketplace mode multi-rôles", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Fermer" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
 
-  await page.getByRole("button", { name: /ouvrir la navigation/i }).click();
-  await page.getByLabel("Navigation principale").getByRole("link", { name: "CV", exact: true }).click();
+  await navigateTo(page, "CV");
   await expect(page.locator("#cv")).toBeInViewport();
   await expect(page.locator("#cv").getByRole("link", { name: "Télécharger", exact: true })).toHaveAttribute("href", /cv\.pdf|cv-image/);
 
-  await page.getByRole("button", { name: /ouvrir la navigation/i }).click();
-  await page.getByLabel("Navigation principale").getByRole("link", { name: "Repères", exact: true }).click();
+  await navigateTo(page, "Certifications");
   await expect(page.locator("#certifications")).toBeInViewport();
   await expect(page.locator("#certifications").getByRole("link", { name: /Télécharger/i })).toHaveCount(0);
+  await expect(page.locator("#certifications").getByRole("link", { name: "Vérifier Algorithms" })).toHaveAttribute(
+    "href",
+    "https://www.coursera.org/account/accomplishments/specialization/A8YJA9BK1RKZ",
+  );
+  await expect(page.locator("#certifications").getByRole("link", { name: /CocoMarket/ })).toHaveAttribute(
+    "href",
+    "https://github.com/seven-v73/CocoMarket",
+  );
 });
 
 test("gestion: page de connexion et formulaire admin accessibles", async ({ page }) => {
@@ -136,6 +139,7 @@ test("gestion: connexion mockée et sauvegarde du contenu", async ({ page }) => 
   await page.route("**/profile-manifest.json*", (route) => route.fulfill({ status: 404, body: "{}" }));
 
   await page.goto("/login");
+  await page.getByLabel("Email").fill("admin@portfolio.local");
   await page.getByLabel("Mot de passe").fill("Portfolio@2026!");
   await page.getByRole("button", { name: "Se connecter" }).click();
 
@@ -170,4 +174,49 @@ test("VictoireOS: parcours rapides et commande projet", async ({ page }) => {
   await page.keyboard.press("Enter");
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByRole("dialog").getByText("ElegantStyle")).toBeVisible();
+});
+
+test("chapitre système : chaque couche renvoie à un projet qui la prouve", async ({ page }) => {
+  await page.goto("/");
+
+  const chapter = page.locator("#systeme");
+  await chapter.scrollIntoViewIfNeeded();
+  await expect(chapter.getByRole("heading", { level: 3 })).toHaveCount(5);
+  await chapter.getByRole("button", { name: "SevenOS" }).first().click();
+  await expect(page.getByRole("dialog", { name: "SevenOS" })).toBeVisible();
+  await expect(page.getByRole("dialog").getByText("Code privé · démonstration sur demande")).toBeVisible();
+  await expect(page.getByRole("dialog").getByRole("link", { name: /voir le code/i })).toHaveCount(0);
+});
+
+test("générateur de CV : contenu du portfolio, langues et modèles", async ({ page }) => {
+  await page.goto("/cv-builder");
+
+  const sheet = page.locator(".cv-sheet");
+  await expect(sheet.getByRole("heading", { name: "Victoire SAWADOGO" })).toBeVisible();
+  await expect(sheet.getByText("Expérience professionnelle")).toBeVisible();
+  await expect(sheet.locator(".cvs-entry-head strong").filter({ hasText: /^SevenOS/ })).toBeVisible();
+  await expect(sheet.getByRole("link", { name: "sawadogovictor12@gmail.com" })).toHaveAttribute("href", "mailto:sawadogovictor12@gmail.com");
+  await expect(page.getByRole("button", { name: "Télécharger en PDF" })).toBeEnabled();
+
+  await page.getByRole("button", { name: "Sobre (ATS)" }).click();
+  await expect(page.locator(".cv-sheet.cv-ats")).toBeVisible();
+
+  await page.getByRole("button", { name: "English" }).click();
+  await expect(sheet.getByText("Experience", { exact: true })).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+});
+
+test("accessibilité : aucune violation grave détectée par axe", async ({ page }) => {
+  await page.goto("/");
+  // Scroll through once so every section has revealed, then measure from the top where the hero is fully opaque.
+  await page.locator("#contact").scrollIntoViewIfNeeded();
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
+  await page.waitForTimeout(500);
+
+  const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
+  const serious = results.violations
+    .filter((violation) => violation.impact === "serious" || violation.impact === "critical")
+    .map((violation) => `${violation.id}: ${violation.nodes.slice(0, 3).map((node) => node.target.join(" ")).join(", ")}`);
+
+  expect(serious).toEqual([]);
 });

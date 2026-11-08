@@ -17,7 +17,7 @@ const publicAssetSchema = z.preprocess(
 
 const stackItemSchema = z.object({
   name: z.string().trim().min(1).max(80),
-  logo: z.string().trim().url(),
+  logo: z.string().trim().startsWith("/").or(z.string().trim().url()),
 });
 
 const stackGroupSchema = z.object({
@@ -39,6 +39,7 @@ const projectSchema = z.object({
   githubStars: z.coerce.number().min(0).optional().default(0),
   githubForks: z.coerce.number().min(0).optional().default(0),
   source: z.enum(["manual", "github"]).optional().default("manual"),
+  privateRepo: z.boolean().optional().default(false),
   apkUrl: publicAssetSchema.optional().default(""),
   apkName: z.string().trim().max(180).optional().default(""),
   screenshots: z.array(z.object({
@@ -59,6 +60,11 @@ const identityPillarSchema = z.object({
   title: z.string().trim().min(1).max(160),
   text: z.string().trim().min(1).max(700),
 });
+
+// Admin list editors add blank rows; they are dropped instead of failing the whole save.
+function dropEmpty(items) {
+  return items.filter(Boolean);
+}
 
 export const siteContentSchema = z.object({
   heroEyebrow: z.string().trim().min(1).max(140),
@@ -92,6 +98,16 @@ export const siteContentSchema = z.object({
     linkedin: urlSchema,
     whatsapp: urlSchema,
   }),
+  cv: z.object({
+    headline: z.string().trim().max(180).optional().default(""),
+    summary: z.string().trim().max(900).optional().default(""),
+    location: z.string().trim().max(120).optional().default(""),
+    phone: z.string().trim().max(40).optional().default(""),
+    website: z.string().trim().max(200).optional().default(""),
+    languages: z.array(z.string().trim().max(80)).max(8).transform(dropEmpty).optional().default([]),
+    interests: z.array(z.string().trim().max(80)).max(8).transform(dropEmpty).optional().default([]),
+    projects: z.array(z.string().trim().min(1).max(120)).max(8).optional().default([]),
+  }).optional(),
 });
 
 export const projectInputSchema = projectSchema.extend({

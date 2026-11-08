@@ -9,9 +9,14 @@ export function getContentSnapshot<TContent>(content: TContent) {
   return JSON.stringify(stripRuntimeFields(content));
 }
 
-export function readAdminDraft<TContent>(): AdminDraft<TContent> | null {
+// One draft per content language; French keeps the original key so existing drafts survive.
+function draftKey(language = "fr") {
+  return language === "fr" ? adminDraftKey : `${adminDraftKey}-${language}`;
+}
+
+export function readAdminDraft<TContent>(language = "fr"): AdminDraft<TContent> | null {
   try {
-    const rawDraft = localStorage.getItem(adminDraftKey);
+    const rawDraft = localStorage.getItem(draftKey(language));
     if (!rawDraft) return null;
     const draft = JSON.parse(rawDraft) as AdminDraft<TContent>;
     if (!draft.content || !draft.savedAt) return null;
@@ -21,14 +26,14 @@ export function readAdminDraft<TContent>(): AdminDraft<TContent> | null {
   }
 }
 
-export function writeAdminDraft<TContent>(content: TContent) {
+export function writeAdminDraft<TContent>(content: TContent, language = "fr") {
   const savedAt = new Date().toISOString();
-  localStorage.setItem(adminDraftKey, JSON.stringify({ content: stripRuntimeFields(content), savedAt }));
+  localStorage.setItem(draftKey(language), JSON.stringify({ content: stripRuntimeFields(content), savedAt }));
   return savedAt;
 }
 
-export function clearAdminDraft() {
-  localStorage.removeItem(adminDraftKey);
+export function clearAdminDraft(language = "fr") {
+  localStorage.removeItem(draftKey(language));
 }
 
 export function stripRuntimeFields<T>(value: T): T {

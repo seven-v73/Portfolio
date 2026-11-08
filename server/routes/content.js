@@ -94,16 +94,22 @@ const certificationsUpload = createPublicUpload({
   unsupportedMessage: "Format non supporté. Envoie un PDF.",
 });
 
-contentRouter.get("/", asyncHandler(async (_req, res) => {
-  const content = await SiteContent.findOne({ key: "main" });
+// French is the main content; English is stored next to it so the admin can edit both.
+function contentKey(req) {
+  return req.query.lang === "en" ? "main-en" : "main";
+}
+
+contentRouter.get("/", asyncHandler(async (req, res) => {
+  const content = await SiteContent.findOne({ key: contentKey(req) });
   return res.json({ content: content?.data || null });
 }));
 
 contentRouter.put("/", requireAuth, asyncHandler(async (req, res) => {
   const validatedContent = siteContentSchema.parse(req.body || {});
+  const key = contentKey(req);
   const content = await SiteContent.findOneAndUpdate(
-    { key: "main" },
-    { key: "main", data: validatedContent },
+    { key },
+    { key, data: validatedContent },
     { upsert: true, returnDocument: "after" },
   );
 

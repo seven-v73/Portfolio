@@ -15,6 +15,7 @@ export type ProjectItem = {
   githubStars?: number;
   githubForks?: number;
   source?: "manual" | "github";
+  privateRepo?: boolean;
   apkUrl?: string;
   apkName?: string;
   screenshots?: {
@@ -40,6 +41,17 @@ export type TimelineItem = {
 export type IdentityPillar = {
   title: string;
   text: string;
+};
+
+export type CvSettings = {
+  headline: string;
+  summary: string;
+  location: string;
+  phone: string;
+  website: string;
+  languages: string[];
+  interests: string[];
+  projects: string[];
 };
 
 export type SiteContent = {
@@ -71,6 +83,7 @@ export type SiteContent = {
     linkedin: string;
     whatsapp: string;
   };
+  cv: CvSettings;
 };
 
 export type UiCopy = {
@@ -78,15 +91,35 @@ export type UiCopy = {
   languageToggleLabel: string;
   switchTo: string;
   skipLink: string;
+  navAria: string;
+  navMenuAria: string;
+  menuOpen: string;
+  menuClose: string;
+  themeLight: string;
+  themeDark: string;
+  footerNote: string;
+  footerAria: string;
+  backToTop: string;
+  adminLink: string;
   brandAria: string;
   brandTitle: string;
   heroBoot: string;
+  availability: string;
+  heroVisualCaption: string;
+  heroVisualAria: string;
+  architectureLabel: string;
+  stackTabsAria: string;
+  layersKicker: string;
+  layersTitle: string;
+  privateRepoNote: string;
+  requestDemo: string;
   heroProjects: string;
   heroContact: string;
   recruiterBriefAria: string;
   recruiterBriefTitle: string;
   recruiterBriefIntro: string;
   recruiterBriefItems: string[][];
+  recruiterBriefLinksAria: string;
   recruiterBriefLinks: {
     projects: string;
     resume: string;
@@ -149,14 +182,22 @@ export type UiCopy = {
   cvAvailableText: string;
   certificationsKicker: string;
   certificationsTitle: string;
+  certificationsIntro: string;
   certificationsView: string;
-  certificationsMissingTitle: string;
-  certificationsMissingText: string;
-  certificationsAvailableTitle: string;
-  certificationsAvailableText: string;
+  certificationsStatsAria: string;
+  certificationsStats: {
+    total: string;
+    verifiable: string;
+    issuers: string;
+    domains: string;
+  };
+  certificationsVerify: string;
+  certificationsMore: string;
+  certificationsProofs: string;
   labSession: string;
   labOs: string;
   labCycleAria: string;
+  labIdeasTitle: string;
   techMarqueeAria: string;
   terminal: {
     title: string;

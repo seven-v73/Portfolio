@@ -17,7 +17,7 @@ export async function getGithubProjects({ force = false } = {}) {
     const repos = await fetchGithubRepos();
     cachedProjects = repos
       .filter(isEligibleRepo)
-      .sort((a, b) => new Date(b.pushed_at || b.updated_at) - new Date(a.pushed_at || a.updated_at))
+      .sort(compareRepos)
       .map(mapRepoToProject);
     cachedAt = now;
     return cachedProjects;
@@ -51,12 +51,42 @@ async function fetchGithubRepos() {
   return Array.isArray(repos) ? repos : [];
 }
 
+// Flagship repositories come first, the rest by most recent activity.
+const featuredRepos = [
+  "cocomarket",
+  "sdm",
+  "crypted_message",
+  "baobab",
+  "simplon-procurement-backend",
+  "elegantfaso",
+  "mdm_system",
+  "le-grin",
+  "devops-capstone-project",
+  "customer-accounts-microservice",
+];
+
+function compareRepos(a, b) {
+  const rankA = getFeaturedRank(a);
+  const rankB = getFeaturedRank(b);
+  if (rankA !== rankB) return rankA - rankB;
+  return new Date(b.pushed_at || b.updated_at) - new Date(a.pushed_at || a.updated_at);
+}
+
+function getFeaturedRank(repo) {
+  const index = featuredRepos.indexOf(String(repo.name || "").toLowerCase());
+  return index === -1 ? featuredRepos.length : index;
+}
+
 function isEligibleRepo(repo) {
   if (!repo || repo.private || repo.fork || repo.archived || repo.disabled) {
     return false;
   }
 
   if (repo.name === config.githubUsername) {
+    return false;
+  }
+
+  if (config.githubExcludedRepos.includes(String(repo.name).toLowerCase())) {
     return false;
   }
 
@@ -134,49 +164,115 @@ function getRepoCaseStudy(repo, language) {
       decisions: "i18n, thème clair/sombre, terminal guidé, synchronisation GitHub et animations plus sobres.",
       next: "Ajouter plus de captures réelles et continuer à alléger le front.",
     },
+    "cocomarket": {
+      name: "CocoMarket",
+      type: "Systèmes distribués, retail",
+      focus: "Ventes résilientes hors ligne",
+      description: "Remontée asynchrone des ventes de plusieurs caisses vers le siège, sans perte ni double comptage, même pendant une coupure réseau.",
+      role: "Architecture, développement backend et exploitation.",
+      problem: "Une caisse doit continuer à vendre quand le réseau tombe, et le siège ne doit jamais compter une vente deux fois.",
+      solution: "Outbox SQLite locale, RabbitMQ avec publisher confirms, files quorum, retry et DLQ, consommateur idempotent côté siège.",
+      decisions: "Livraison au moins une fois et idempotence, healthchecks, métriques Prometheus, X-Request-ID et simulation de coupure.",
+      next: "Ajouter des tests de charge et un tableau de bord de supervision.",
+    },
+    "sdm": {
+      name: "Simplon Device Manager",
+      type: "Gestion de parc, systèmes",
+      focus: "Cycle de vie des machines",
+      description: "Plateforme pour savoir où se trouve chaque machine, qui l'utilise, si elle est conforme, et pouvoir la verrouiller, l'auditer ou l'effacer.",
+      role: "Architecture, API, dashboard et agent système.",
+      problem: "Recenser un parc ne suffit pas: il faut pouvoir agir sur chaque machine et garder une trace.",
+      solution: "API NestJS avec Prisma, PostgreSQL, Redis/BullMQ et WebSocket, dashboard Next.js et agent Windows en Rust.",
+      decisions: "Agent exécuté comme service système, session admin JWT et bootstrap protégé par secret.",
+      next: "Étendre l'agent à Linux et ajouter des politiques de conformité.",
+    },
+    "crypted-message": {
+      name: "Crypted Message",
+      type: "Cryptographie, sécurité réseau",
+      focus: "Messagerie face à un attaquant",
+      description: "Messagerie entre deux machines avec un attaquant qui écoute ou modifie le trafic: RSA, courbes elliptiques et El-Gamal.",
+      role: "Conception des scénarios et implémentation cryptographique.",
+      problem: "Les garanties de la cryptographie restent abstraites tant qu'on ne voit pas un attaquant échouer.",
+      solution: "Trois démonstrations entre Alice et Bob, avec Eve qui contrôle le relais réseau en mode passif ou actif.",
+      decisions: "RSA-2048 OAEP et RSA-PSS, ECDH P-256 avec HKDF et AES-256-GCM, El-Gamal écrit à la main sur un groupe RFC 3526.",
+      next: "Ajouter un scénario d'échange authentifié de clés.",
+    },
     "mdm-system": {
-      name: "MDM System",
-      type: "Gestion, backend, tableau de bord",
-      focus: "Suivi interne",
-      description: "Un système de gestion pour regrouper des informations, suivre des statuts et éviter les vérifications dans plusieurs endroits.",
-      role: "Structure des données, logique métier et interface de consultation.",
-      problem: "Les suivis deviennent vite flous quand les informations vivent dans plusieurs fichiers ou messages.",
-      solution: "J'ai posé une base de gestion plus centralisée, avec des statuts faciles à lire.",
-      decisions: "Parcours simple, validations et données rangées avant les fonctionnalités secondaires.",
-      next: "Ajouter des rôles, des exports et quelques indicateurs.",
+      name: "Seven Control",
+      type: "Administration de postes, C++",
+      focus: "Parc apprenant",
+      description: "Adaptation opérationnelle de Veyon pour inventorier, vérifier, verrouiller et administrer des postes apprenants.",
+      role: "Adaptation de Veyon et outillage d'exploitation.",
+      problem: "Administrer une salle de postes apprenants demande des outils simples pour le quotidien des formateurs.",
+      solution: "Une couche Seven Control au-dessus du moteur Veyon, dont l'historique upstream est conservé.",
+      decisions: "Garder Veyon intact pour suivre ses mises à jour et isoler les ajouts dans seven-control/.",
+      next: "Documenter le déploiement et les scénarios de salle.",
     },
     "le-grin": {
       name: "Le Grin",
-      type: "Plateforme locale, TypeScript",
-      focus: "Service local",
-      description: "Une base de plateforme locale autour de publications, échanges et services de proximité.",
-      role: "Cadrage produit, interface et structure technique.",
-      problem: "Les interactions locales existent déjà, mais elles sont souvent dispersées et peu visibles.",
-      solution: "J'ai commencé par une base web lisible pour publier, découvrir et contacter plus simplement.",
-      decisions: "TypeScript pour garder une base plus propre à mesure que le projet grandit.",
-      next: "Clarifier les parcours et mettre une démo en ligne.",
+      type: "Plateforme, TypeScript",
+      focus: "Apprentissage et mentorat",
+      description: "Prototype full-stack autour de parcours d'apprentissage, de mentorat, d'espaces entreprise et membres.",
+      role: "Cadrage produit, frontend et API.",
+      problem: "Apprenants, mentors et entreprises se croisent rarement au même endroit.",
+      solution: "Next.js et React côté interface, API Express avec Prisma et PostgreSQL.",
+      decisions: "Espaces séparés par profil et authentification dédiée.",
+      next: "Mettre une démo en ligne.",
     },
     "elegantfaso": {
-      name: "Elegantfaso",
-      type: "Mode, mobile, Dart",
-      focus: "Mode mobile",
-      description: "Un projet mobile autour du style: garder des idées de tenues, préparer un look et organiser les inspirations.",
-      role: "Développement mobile et réflexion produit autour des usages mode.",
-      problem: "Préparer un style devient vite dispersé entre images, idées, couleurs et contexte.",
-      solution: "J'ai travaillé une base mobile pour regrouper les inspirations et rendre le choix plus simple.",
-      decisions: "Dart pour avancer vers une expérience mobile stable.",
-      next: "Ajouter des captures, des données de test et un parcours de recommandation.",
+      name: "ElegantStyle",
+      type: "Mode, marketplace, mobile",
+      focus: "Marketplace mode multi-rôles",
+      description: "Application Flutter de mode: un compte unique et des espaces cohérents pour clients, créateurs, boutiques et administration.",
+      role: "Conception produit et développement mobile.",
+      problem: "Clients, créateurs et boutiques ont des besoins différents mais partagent le même catalogue.",
+      solution: "Un Salon public et un espace métier par rôle, avec un Catalogue Express pour publier depuis des photos.",
+      decisions: "Flutter et Firebase, architecture multi-rôles autour d'un compte unique.",
+      next: "Publier une version de test.",
     },
     "baobab": {
-      name: "BAOBAB",
-      type: "Culture, web, plateforme",
-      focus: "Culture locale",
-      description: "Une piste de plateforme culturelle pour présenter des contenus, savoir-faire et créateurs locaux.",
-      role: "Cadrage de l'expérience et construction d'une base web.",
-      problem: "Les contenus culturels et les créateurs sont souvent visibles par petits morceaux, rarement au même endroit.",
-      solution: "J'ai posé une structure web pour rassembler les informations sans créer un catalogue lourd.",
-      decisions: "Structure simple, pensée pour évoluer vers contenus, profils et boutique.",
-      next: "Clarifier les catégories, ajouter des visuels réels et une démo.",
+      name: "MonBaobab",
+      type: "Culture, e-commerce, communauté",
+      focus: "Plateforme culturelle africaine",
+      description: "Plateforme full-stack pour découvrir, valoriser et transmettre les cultures africaines: contenus, communautés, boutique et back-office.",
+      role: "Architecture full-stack, API et back-office.",
+      problem: "Les contenus culturels et les créateurs africains sont dispersés et peu visibles.",
+      solution: "Frontend React et TypeScript, API Express et MongoDB, boutique avec paiement Stripe.",
+      decisions: "JWT avec refresh token, double authentification TOTP et modération des communautés.",
+      next: "Mettre une démo publique en ligne.",
+    },
+    "devops-capstone-project": {
+      name: "DevOps Capstone",
+      type: "CI/CD, conteneurs, OpenShift",
+      focus: "Pipeline de livraison",
+      description: "Service Flask livré par GitHub Actions et Tekton, puis déployé sur OpenShift.",
+      role: "Pipeline CI/CD et manifestes de déploiement.",
+      problem: "Livrer un service de façon répétable, testée et observable.",
+      solution: "Lint et tests automatisés, image Docker, tâches Tekton et manifestes OpenShift.",
+      decisions: "Endpoint /health pour les sondes et pipeline découpé en tâches réutilisables.",
+      next: "Ajouter un déploiement progressif.",
+    },
+    "customer-accounts-microservice": {
+      name: "Customer Accounts",
+      type: "Microservice, API REST",
+      focus: "Service testé en CI",
+      description: "Microservice REST de gestion de comptes clients, testé automatiquement à chaque modification.",
+      role: "API, tests et intégration continue.",
+      problem: "Un microservice doit rester fiable à chaque changement.",
+      solution: "API CRUD en Python, suite pytest et workflow GitHub Actions.",
+      decisions: "Tests avant fonctionnalités et conteneurisation Docker.",
+      next: "Ajouter une documentation OpenAPI.",
+    },
+    "final-project-emotion-detection": {
+      name: "Emotion Detection",
+      type: "IA, NLP, API",
+      focus: "Analyse d'émotions",
+      description: "Application web Flask qui détecte les émotions d'un texte avec le service Watson NLP et affiche l'émotion dominante.",
+      role: "Intégration du modèle, application web et tests.",
+      problem: "Rendre un modèle de NLP utilisable depuis une interface simple.",
+      solution: "Package Python qui interroge Watson NLP, application Flask et gestion des réponses invalides.",
+      decisions: "Gestion des entrées vides et tests unitaires.",
+      next: "Comparer plusieurs modèles.",
     },
     "scripts-bash": {
       name: "Scripts Bash",
@@ -201,15 +297,15 @@ function getRepoCaseStudy(repo, language) {
       next: "Ajouter authentification par rôle, historique et export.",
     },
     "simplon-procurement-backend": {
-      name: "Simplon Procurement Backend",
-      type: "Backend, achats, API",
-      focus: "Achats et statuts",
-      description: "Un backend pour organiser des demandes, des statuts et des traitements liés aux achats.",
-      role: "Conception API, logique métier et préparation des données.",
+      name: "Simplon Procurement",
+      type: "Outil interne, workflow métier",
+      focus: "Achats validés en 3 étapes",
+      description: "Gestion des demandes d'achat avec validation multi-niveaux par rôle: employé, moyens généraux, comptabilité, direction.",
+      role: "Conception API, logique métier et sécurité.",
       problem: "Un processus d'achat a besoin de traces claires: qui demande, où ça bloque, ce qui est validé.",
-      solution: "J'ai posé une API centrée sur les entités, les statuts et les opérations métier.",
-      decisions: "Séparer les responsabilités pour faire évoluer le backend sans tout casser.",
-      next: "Ajouter tests d'intégration, rôles et documentation OpenAPI.",
+      solution: "API Django REST Framework et PostgreSQL, notifications Mailjet, pièces jointes Cloudinary et journal d'activité.",
+      decisions: "JWT en cookies HttpOnly, workflow à 3 étapes et rôles séparés.",
+      next: "Ajouter tests d'intégration et documentation OpenAPI.",
     },
   };
 

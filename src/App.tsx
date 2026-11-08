@@ -1,32 +1,47 @@
-import { lazy, Suspense, useEffect, useId, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import Lenis from "lenis";
-import { motion } from "framer-motion";
+import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import {
+  AnimatePresence,
+  MotionConfig,
+  animate,
+  motion,
+  useInView,
+  useMotionTemplate,
+  useMotionValueEvent,
+  useReducedMotion,
+  useScroll,
+  useTransform,
+  type MotionStyle,
+  type MotionValue,
+} from "framer-motion";
 import {
   ArrowUpRight,
-  Activity,
   BriefcaseBusiness,
+  ChevronDown,
+  ChevronRight,
   Code2,
   Cpu,
   Download,
   Eye,
   FileText,
-  GitBranch,
+  Globe2,
   GraduationCap,
   Github,
-  Home,
   Layers3,
   Linkedin,
   LockKeyhole,
   LogOut,
   Mail,
   MessageCircle,
-  Rocket,
+  Moon,
+  Network,
+  Search,
   ServerCog,
   ShieldCheck,
   Smartphone,
-  Terminal,
-  UserRound,
-  type LucideIcon,
+  Sparkles,
+  Sun,
+  X,
 } from "lucide-react";
 import {
   clearAdminDraft,
@@ -36,6 +51,10 @@ import {
   stripRuntimeFields,
   writeAdminDraft,
 } from "./utils/adminDraft";
+import SystemsGlobe from "./SystemsGlobe";
+import type { CvContentLoader } from "./CvBuilder";
+import { getArchitecture, getNodeName } from "./data/architectures";
+import { systemLayers } from "./data/layers";
 import { cloneItem, moveItem } from "./utils/collections";
 import { filterProjects, getProjectTags } from "./utils/projectFilters";
 import { resolveShellCommand, type ShellContext } from "./victoire-os/shell/commands";
@@ -52,28 +71,28 @@ import type { ShellMode, VictoireMemory } from "./victoire-os/types";
 import { enLocale } from "./i18n/en";
 import { frLocale } from "./i18n/fr";
 import type { IdentityPillar, Language, ProjectItem, SiteContent, StackGroup, TimelineItem, UiCopy } from "./i18n/types";
+import {
+  certificationDomains,
+  formatIssuedDate,
+  getCertificationStats,
+  getCredentialUrl,
+  getProofUrl,
+  type Certification,
+} from "./data/certifications";
 
 const locales = {
   fr: frLocale,
   en: enLocale,
 } satisfies Record<Language, typeof frLocale>;
 
-const WorldScene = lazy(() => import("./WorldScene"));
+const CvBuilder = lazy(() => import("./CvBuilder"));
 const isE2E = import.meta.env.VITE_E2E === "true";
+const appleEase = [0.25, 0.1, 0.25, 1] as const;
 
-const navItemIds = ["top", "profil", "parcours", "stack", "projets", "labo", "cv", "certifications", "contact"] as const;
-const navSectionIds = [...navItemIds];
-const navIcons: Record<(typeof navItemIds)[number], LucideIcon> = {
-  top: Home,
-  profil: UserRound,
-  parcours: GraduationCap,
-  stack: Cpu,
-  projets: Layers3,
-  labo: Terminal,
-  cv: FileText,
-  certifications: ShieldCheck,
-  contact: Mail,
-};
+type Theme = "light" | "dark";
+
+const navItemIds = ["profil", "projets", "stack", "certifications", "parcours", "labo", "cv", "contact"] as const;
+const navSectionIds = ["top", "systeme", ...navItemIds] as const;
 
 const stacks = [
   {
@@ -461,18 +480,44 @@ const stackIcons = {
   Mobile: Smartphone,
   "Backend": ServerCog,
   "DevOps & IT": Cpu,
+  Langages: Code2,
+  Languages: Code2,
+  "Web & Mobile": Layers3,
+  "Données & messagerie": ServerCog,
+  "Data & messaging": ServerCog,
+  "Cloud, DevOps & systèmes": Cpu,
+  "Cloud, DevOps & systems": Cpu,
 };
 
 function App() {
   const isLoginRoute = window.location.pathname === "/login";
+  const isCvBuilderRoute = window.location.pathname === "/cv-builder";
   const [language, setLanguage] = useState<Language>(() => getInitialLanguage());
   const locale = locales[language];
   const [content, setContent] = useState<SiteContent>(locale.content);
+  const [theme, setTheme] = useState<Theme>(() => getInitialTheme());
 
   useEffect(() => {
     localStorage.setItem("portfolio_language", language);
     document.documentElement.lang = language;
+    const url = new URL(window.location.href);
+    if (language === "en") {
+      url.searchParams.set("lang", "en");
+    } else {
+      url.searchParams.delete("lang");
+    }
+    window.history.replaceState(window.history.state, "", url);
   }, [language]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#000000" : "#ffffff");
+    try {
+      localStorage.setItem("portfolio_theme", theme);
+    } catch {
+      // Private browsing: the theme simply is not remembered.
+    }
+  }, [theme]);
 
   useEffect(() => {
     if (!isE2E) return;
@@ -480,25 +525,23 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (isLoginRoute) return;
+    if (isLoginRoute || isCvBuilderRoute) return;
 
     let isMounted = true;
 
     async function loadPublicContent() {
       let nextContent = locale.content;
 
-      if (language === "fr") {
-        try {
-          const contentResponse = await fetch("/api/content");
-          if (contentResponse.ok) {
-            const data = await readJsonResponse(contentResponse);
-            if (data.content) {
-              nextContent = mergeContent(data.content, locale.content);
-            }
+      try {
+        const contentResponse = await fetch(contentUrl(language));
+        if (contentResponse.ok) {
+          const data = await readJsonResponse(contentResponse);
+          if (data.content) {
+            nextContent = mergeContent(data.content, locale.content);
           }
-        } catch {
-          nextContent = locale.content;
         }
+      } catch {
+        nextContent = locale.content;
       }
 
       try {
@@ -527,84 +570,97 @@ function App() {
     return () => {
       isMounted = false;
     };
-  }, [isLoginRoute, language, locale.content]);
+  }, [isCvBuilderRoute, isLoginRoute, language, locale.content]);
 
-  useEffect(() => {
-    if (isLoginRoute) return;
-
-    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduceMotion) return;
-
-    const lenis = new Lenis({ lerp: 0.08, smoothWheel: true });
-    let frame = 0;
-
-    const raf = (time: number) => {
-      lenis.raf(time);
-      frame = requestAnimationFrame(raf);
-    };
-
-    frame = requestAnimationFrame(raf);
-    return () => {
-      cancelAnimationFrame(frame);
-      lenis.destroy();
-    };
-  }, []);
+  if (isCvBuilderRoute) {
+    return (
+      <Suspense fallback={null}>
+        <CvBuilder initialLanguage={language} loadContent={loadCvContent} />
+      </Suspense>
+    );
+  }
 
   return isLoginRoute ? (
     <LoginPage />
   ) : (
-    <main className="site-shell seven-world">
-      <ScrollProgress />
-      <a className="skip-link" href="#profil">
-        {locale.ui.skipLink}
-      </a>
-      <AmbientBackground />
-      <Header
-        language={language}
-        ui={locale.ui}
-        onToggleLanguage={() => setLanguage(language === "fr" ? "en" : "fr")}
-      />
-      <Hero content={content} ui={locale.ui} />
-      <RecruiterBrief ui={locale.ui} />
-      <About content={content} ui={locale.ui} />
-      <Identity content={content} ui={locale.ui} />
-      <Journey content={content} ui={locale.ui} />
-      <Stack content={content} ui={locale.ui} />
-      <Projects content={content} ui={locale.ui} language={language} />
-      <Lab content={content} ui={locale.ui} />
-      <CvSection ui={locale.ui} />
-      <CertificationsSection ui={locale.ui} />
-      <Contact content={content} ui={locale.ui} />
-    </main>
+    <MotionConfig reducedMotion="user">
+      <div className="site">
+        <a className="skip-link" href="#profil">
+          {locale.ui.skipLink}
+        </a>
+        <Header
+          language={language}
+          theme={theme}
+          ui={locale.ui}
+          onToggleLanguage={() => setLanguage(language === "fr" ? "en" : "fr")}
+          onToggleTheme={() => setTheme(theme === "light" ? "dark" : "light")}
+        />
+        <main>
+          <Hero content={content} ui={locale.ui} theme={theme} />
+          <SystemLayers ui={locale.ui} language={language} />
+          <About content={content} ui={locale.ui} />
+          <Projects content={content} ui={locale.ui} language={language} />
+          <Stack content={content} ui={locale.ui} />
+          <CertificationsSection ui={locale.ui} language={language} />
+          <Journey content={content} ui={locale.ui} />
+          <Lab content={content} ui={locale.ui} />
+          <CvSection ui={locale.ui} />
+          <Contact content={content} ui={locale.ui} />
+        </main>
+        <Footer ui={locale.ui} />
+      </div>
+    </MotionConfig>
   );
 }
 
-function ScrollProgress() {
-  const [progress, setProgress] = useState(0);
+function contentUrl(language: Language) {
+  return language === "en" ? "/api/content?lang=en" : "/api/content";
+}
 
-  useEffect(() => {
-    function updateProgress() {
-      const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-      setProgress(maxScroll > 0 ? Math.min(1, window.scrollY / maxScroll) : 0);
+// The resume builder reads the published content, or the admin's unpublished draft when asked to.
+const loadCvContent: CvContentLoader = async (language, useDraft) => {
+  const baseContent = locales[language].content;
+  if (useDraft) {
+    const draft = readAdminDraft<SiteContent>(language);
+    if (draft) {
+      return { content: mergeContent(draft.content, baseContent), fromDraft: true };
     }
+  }
 
-    updateProgress();
-    window.addEventListener("scroll", updateProgress, { passive: true });
-    window.addEventListener("resize", updateProgress);
-    return () => {
-      window.removeEventListener("scroll", updateProgress);
-      window.removeEventListener("resize", updateProgress);
-    };
-  }, []);
+  try {
+    const response = await fetch(contentUrl(language));
+    if (response.ok) {
+      const data = await readJsonResponse(response);
+      if (data.content) {
+        return { content: mergeContent(data.content, baseContent), fromDraft: false };
+      }
+    }
+  } catch {
+    // Offline or static preview: the default content still makes a complete resume.
+  }
 
-  return (
-    <div className="scroll-progress" aria-hidden="true">
-      <span style={{ transform: `scaleX(${progress})` }} />
-    </div>
-  );
+  return { content: baseContent, fromDraft: false };
+};
+
+function getInitialTheme(): Theme {
+  try {
+    const storedTheme = localStorage.getItem("portfolio_theme");
+    if (storedTheme === "light" || storedTheme === "dark") {
+      return storedTheme;
+    }
+  } catch {
+    // Storage unavailable: fall back to the light theme.
+  }
+
+  return "light";
 }
 
 function getInitialLanguage(): Language {
+  const urlLanguage = new URLSearchParams(window.location.search).get("lang");
+  if (urlLanguage === "fr" || urlLanguage === "en") {
+    return urlLanguage;
+  }
+
   const storedLanguage = localStorage.getItem("portfolio_language");
   if (storedLanguage === "fr" || storedLanguage === "en") {
     return storedLanguage;
@@ -615,28 +671,44 @@ function getInitialLanguage(): Language {
 
 function mergeContent(content: Partial<SiteContent>, baseContent = defaultContent): SiteContent {
   const refreshedContent = refreshLegacyCopy(content, baseContent);
-  const professionalTimeline = sanitizeProfessionalTimeline(isLegacyTimeline(content.professionalTimeline, [
+  const professionalTimeline = sanitizeProfessionalTimeline(isLegacyTimeline(refreshedContent.professionalTimeline, [
     "Développeur Fullstack & Mobile",
     "Support IT, maintenance et accompagnement technique",
     "Produits numériques utiles au terrain",
   ])
     ? baseContent.professionalTimeline
-    : content.professionalTimeline);
-  const academicTimeline = isLegacyTimeline(content.academicTimeline, [
+    : refreshedContent.professionalTimeline);
+  const academicTimeline = isLegacyTimeline(refreshedContent.academicTimeline, [
     "Développement fullstack, mobile et produit numérique",
     "Veille, projets personnels et apprentissage par la pratique",
   ])
     ? baseContent.academicTimeline
-    : content.academicTimeline;
+    : refreshedContent.academicTimeline;
 
   return {
     ...baseContent,
     ...refreshedContent,
     professionalTimeline: professionalTimeline || baseContent.professionalTimeline,
     academicTimeline: academicTimeline || baseContent.academicTimeline,
-    stacks: withRequiredStackItems(refreshedContent.stacks || baseContent.stacks, baseContent.stacks),
+    stacks: withLocalLogos(withRequiredStackItems(refreshedContent.stacks || baseContent.stacks, baseContent.stacks), baseContent.stacks),
     contactLinks: normalizeContactLinks(refreshedContent.contactLinks, baseContent.contactLinks),
+    cv: { ...baseContent.cv, ...(refreshedContent.cv || {}) },
   };
+}
+
+const deviconCdnPrefix = /^https:\/\/cdn\.jsdelivr\.net\/gh\/devicons\/devicon@[^/]+\/icons\//;
+
+// Content saved before the logos moved to public/tech still points at the CDN: swap in the local copy
+// when one exists.
+function withLocalLogos(stacks: StackGroup[], baseStacks: StackGroup[]): StackGroup[] {
+  const localLogos = new Set(baseStacks.flatMap((stack) => stack.items.map((item) => item.logo)));
+  return stacks.map((stack) => ({
+    ...stack,
+    items: stack.items.map((item) => {
+      const localLogo = item.logo.replace(deviconCdnPrefix, "/tech/");
+      return localLogos.has(localLogo) ? { ...item, logo: localLogo } : item;
+    }),
+  }));
 }
 
 function withRequiredStackItems(stacks: StackGroup[], baseStacks: StackGroup[]): StackGroup[] {
@@ -667,14 +739,17 @@ function refreshLegacyCopy(content: Partial<SiteContent>, baseContent: SiteConte
       "Je transforme les idées en produits qui respirent le code.",
       "Je construis des interfaces qu'on peut vraiment utiliser.",
       "Je crée des interfaces vraiment utiles.",
+      "Je conçois des outils clairs pour des usages réels.",
     ],
     heroLead: [
+      "Ingénieur logiciel et systèmes à Abidjan, je construis des applications full-stack, des services distribués et des outils d'administration, avec une attention constante à la fiabilité, à la sécurité et aux usages réels.",
       "Je conçois des interfaces, des API et des applications mobiles pour transformer un besoin concret en produit utilisable: comprendre, prototyper, livrer, puis améliorer avec les retours.",
       "Développeur Fullstack & Mobile, je construis des expériences utiles avec une culture de ligne de commande: comprendre, prototyper, automatiser, livrer et rendre la technologie plus humaine.",
       "J'aime partir d'un besoin simple, le clarifier, puis livrer quelque chose de propre: une page, une API, une app mobile ou un outil interne.",
+      "Je travaille entre produit, code et terrain pour créer des interfaces, des API et des expériences mobiles simples à comprendre, agréables à utiliser et faciles à reprendre.",
     ],
-    profileCaption: ["Web, mobile, API et produits de terrain", "Fullstack, mobile, terminal et innovation africaine", "Web, mobile, support IT, projets livrés"],
-    aboutTitle: ["Un développeur qui relie interface, backend et usage réel."],
+    profileCaption: ["Web, mobile, API et produits de terrain", "Fullstack, mobile, terminal et innovation africaine", "Web, mobile, support IT, projets livrés", "Développeur fullstack & mobile, attentif au terrain et à la clarté"],
+    aboutTitle: ["Un développeur qui relie interface, backend et usage réel.", "Vision"],
     identityTitle: ["Une présence simple: ce que je fais, comment je travaille, ce que j'ai déjà construit."],
     identityIntro: [
       "Cette plateforme rassemble mon profil, mes projets, mon CV, mes liens et un atelier interactif pour explorer mon travail sans se perdre.",
@@ -683,15 +758,20 @@ function refreshLegacyCopy(content: Partial<SiteContent>, baseContent: SiteConte
     journeyTitle: [
       "Formation, terrain et expériences techniques.",
       "Professionnel, académique et produit, sans récit inventé.",
+      "Études, support IT et réalisations concrètes.",
     ],
     journeyIntro: [
       "Un parcours construit entre études informatiques, stages techniques et pratique sur des projets web, mobile et support IT.",
       "Les éléments ci-dessous reprennent uniquement les informations sûres. Les dates et diplômes exacts peuvent être ajoutés dès que tu me les donnes.",
+      "Mon parcours relie la formation informatique, le support terrain et des projets web/mobile que je construis jusqu'à une version utilisable.",
     ],
     labTitle: ["Des idées testées vite, puis améliorées avec le terrain."],
     labIntro: ["Je garde ici les pistes de produits, les prototypes et les sujets qui peuvent devenir des solutions utiles."],
     contactTitle: ["Discutons d'un besoin concret."],
-    contactText: ["Disponible pour des projets web, mobile, API, digitalisation, maintenance et accompagnement technique."],
+    contactText: [
+      "Disponible pour des projets web, mobile, API, digitalisation, maintenance et accompagnement technique.",
+      "Je suis disponible pour concevoir, clarifier ou remettre au propre une interface, une API, une application mobile ou un outil interne.",
+    ],
   };
 
   for (const [key, legacyValues] of Object.entries(legacyCopy) as [keyof SiteContent, string[]][]) {
@@ -702,18 +782,56 @@ function refreshLegacyCopy(content: Partial<SiteContent>, baseContent: SiteConte
   }
 
   if (Array.isArray(nextContent.metrics)) {
-    const oldMetricLabels = new Set(["Ce que je livre", "Ma méthode", "Mon angle", "Mode build", "Approche", "Mission", "Je fais", "Je connais", "Je préfère"]);
+    const oldMetricLabels = new Set(["Ce que je livre", "Ma méthode", "Mon angle", "Mode build", "Approche", "Mission", "Je fais", "Je connais", "Je préfère", "Comprendre", "Créer", "Transmettre"]);
     if (nextContent.metrics.some(([label]) => oldMetricLabels.has(label))) {
       nextContent.metrics = baseContent.metrics;
     }
   }
 
-  if (Array.isArray(nextContent.aboutParagraphs) && nextContent.aboutParagraphs.some((paragraph) => paragraph.startsWith("Je travaille sur des plateformes culturelles"))) {
+  if (Array.isArray(nextContent.aboutParagraphs) && nextContent.aboutParagraphs.some((paragraph) => paragraph.startsWith("Je travaille sur des plateformes culturelles") || paragraph.startsWith("Je développe pour simplifier ce qui ralentit"))) {
     nextContent.aboutParagraphs = baseContent.aboutParagraphs;
   }
 
-  if (Array.isArray(nextContent.identityPillars) && nextContent.identityPillars.some((pillar) => pillar.title === "Je pars du besoin réel")) {
+  if (Array.isArray(nextContent.identityPillars) && nextContent.identityPillars.some((pillar) => pillar.title === "Je pars du besoin réel" || pillar.text.startsWith("Observer les usages, les contraintes"))) {
     nextContent.identityPillars = baseContent.identityPillars;
+  }
+
+  if (Array.isArray(nextContent.techMarquee) && nextContent.techMarquee.includes("Automatisation")) {
+    nextContent.techMarquee = baseContent.techMarquee;
+  }
+
+  if (Array.isArray(nextContent.labs) && nextContent.labs.some((lab) => lab.startsWith("Essayage et préparation de looks"))) {
+    nextContent.labs = baseContent.labs;
+  }
+
+  // SevenOS moved from the ideas list to the projects.
+  if (Array.isArray(nextContent.labs)) {
+    nextContent.labs = nextContent.labs.filter((lab) => !lab.startsWith("SevenOS :"));
+  }
+
+  const legacyStackTitles = new Set(["Frontend", "Mobile", "Backend", "DevOps & IT"]);
+  if (Array.isArray(nextContent.stacks) && nextContent.stacks.every((stack) => legacyStackTitles.has(stack.title))) {
+    nextContent.stacks = baseContent.stacks;
+  }
+
+  const legacyProjectNames = new Set(["ElegantStyle", "BAOBAB / MonBaobab", "BurkinaLoc", "Suivi de cotisations"]);
+  if (Array.isArray(nextContent.projects) && nextContent.projects.length && nextContent.projects.every((project) => legacyProjectNames.has(project.name))) {
+    nextContent.projects = baseContent.projects;
+  }
+
+  if (
+    Array.isArray(nextContent.academicTimeline) &&
+    nextContent.academicTimeline.some((item) => item.title === "Licence en Informatique") &&
+    !nextContent.academicTimeline.some((item) => item.title?.includes("MBDS"))
+  ) {
+    nextContent.academicTimeline = baseContent.academicTimeline;
+  }
+
+  if (
+    Array.isArray(nextContent.professionalTimeline) &&
+    nextContent.professionalTimeline.some((item) => item.detail?.startsWith("Abidjan. Support technique, maintenance informatique et accompagnement utilisateur"))
+  ) {
+    nextContent.professionalTimeline = baseContent.professionalTimeline;
   }
 
   return nextContent;
@@ -771,27 +889,36 @@ function sanitizeProfessionalTimeline(timeline: Partial<TimelineItem>[] | undefi
   return timeline.filter((item) => !hiddenTitles.has(item.title || "")) as TimelineItem[];
 }
 
-function mergeTranslatedAndGithubProjects(translatedProjects: ProjectItem[], apiProjects: ProjectItem[]) {
-  const githubProjects = apiProjects.filter((project) => project.source === "github");
-  const translatedNames = new Set(translatedProjects.map((project) => project.name.toLowerCase()));
-  return [
-    ...translatedProjects,
-    ...githubProjects.filter((project) => !translatedNames.has(project.name.toLowerCase())),
-  ];
+// A curated project keeps its own copy; the matching GitHub repo only adds live metadata.
+function withGithubMetadata(project: ProjectItem, githubProject: ProjectItem): ProjectItem {
+  return {
+    ...project,
+    projectUrl: project.projectUrl || githubProject.projectUrl,
+    githubUrl: githubProject.githubUrl || project.githubUrl,
+    githubRepo: githubProject.githubRepo,
+    githubUpdatedAt: githubProject.githubUpdatedAt,
+    githubStars: githubProject.githubStars,
+    githubForks: githubProject.githubForks,
+    source: "github",
+  };
 }
 
 function mergePublicProjects(fallbackProjects: ProjectItem[], apiProjects: ProjectItem[], language: Language) {
-  if (language === "en") {
-    return mergeTranslatedAndGithubProjects(fallbackProjects, apiProjects);
-  }
+  // Admin-edited projects are stored in French only, so English keeps its translated copy.
+  const manualProjects = language === "fr" ? apiProjects.filter((project) => project.source !== "github") : [];
+  const githubProjects = apiProjects.filter((project) => project.source === "github");
+  const byName = (projects: ProjectItem[]) => new Map(projects.map((project) => [project.name.toLowerCase(), project]));
+  const fallbackByName = byName(fallbackProjects);
+  const manualByName = byName(manualProjects);
+  const githubByName = byName(githubProjects);
+  const names = [...new Set([...fallbackProjects, ...manualProjects, ...githubProjects].map((project) => project.name.toLowerCase()))];
 
-  const apiByName = new Map(apiProjects.map((project) => [project.name.toLowerCase(), project]));
-  const fallbackNames = new Set(fallbackProjects.map((project) => project.name.toLowerCase()));
-
-  return [
-    ...fallbackProjects.map((project) => apiByName.get(project.name.toLowerCase()) || project),
-    ...apiProjects.filter((project) => !fallbackNames.has(project.name.toLowerCase())),
-  ];
+  return names.map((name) => {
+    const project = manualByName.get(name) || fallbackByName.get(name);
+    const githubProject = githubByName.get(name);
+    if (!project) return githubProject as ProjectItem;
+    return githubProject ? withGithubMetadata(project, githubProject) : project;
+  });
 }
 
 function normalizePublicProject(project: ProjectItem): ProjectItem {
@@ -825,7 +952,7 @@ type AuthUser = {
 };
 
 function LoginPage() {
-  const [email, setEmail] = useState("admin@portfolio.local");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [user, setUser] = useState<AuthUser | null>(null);
   const [message, setMessage] = useState("");
@@ -925,6 +1052,9 @@ function LoginPage() {
 }
 
 function ContentManager({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
+  const [editLanguage, setEditLanguage] = useState<Language>("fr");
+  const [contentLanguage, setContentLanguage] = useState<Language>("fr");
+  const baseContent = locales[editLanguage].content;
   const [content, setContent] = useState<SiteContent>(defaultContent);
   const [status, setStatus] = useState("");
   const [cvStatus, setCvStatus] = useState("");
@@ -949,11 +1079,18 @@ function ContentManager({ user, onLogout }: { user: AuthUser; onLogout: () => vo
   const [uploadingProjectScreenshotIndex, setUploadingProjectScreenshotIndex] = useState<number | null>(null);
 
   useEffect(() => {
-    fetch("/api/content")
+    const languageBase = locales[editLanguage].content;
+    setHasLoadedContent(false);
+    fetch(contentUrl(editLanguage))
       .then((response) => (response.ok ? readJsonResponse(response) : Promise.reject()))
-      .then((data) => setManagedContent(mergeContent(data.content || defaultContent)))
-      .catch(() => setManagedContent(defaultContent));
+      .then((data) => setManagedContent(mergeContent(data.content || languageBase, languageBase), editLanguage))
+      .catch(() => setManagedContent(languageBase, editLanguage));
 
+    const draft = readAdminDraft<SiteContent>(editLanguage);
+    setDraftSavedAt(draft ? draft.savedAt : "");
+  }, [editLanguage]);
+
+  useEffect(() => {
     fetch(`/cv-manifest.json?t=${Date.now()}`)
       .then((response) => (response.ok ? readJsonResponse(response) : Promise.reject()))
       .then((data) => setCvInfo(data))
@@ -968,11 +1105,6 @@ function ContentManager({ user, onLogout }: { user: AuthUser; onLogout: () => vo
       .then((response) => (response.ok ? readJsonResponse(response) : Promise.reject()))
       .then((data) => setProfilePhotoInfo(data))
       .catch(() => setProfilePhotoInfo(null));
-
-    const draft = readAdminDraft<SiteContent>();
-    if (draft) {
-      setDraftSavedAt(draft.savedAt);
-    }
   }, []);
 
   useEffect(() => {
@@ -981,11 +1113,12 @@ function ContentManager({ user, onLogout }: { user: AuthUser; onLogout: () => vo
     const snapshot = getContentSnapshot(content);
     if (snapshot === lastSavedContentSnapshot) return;
 
-    const savedAt = writeAdminDraft(content);
+    const savedAt = writeAdminDraft(content, contentLanguage);
     setDraftSavedAt(savedAt);
-  }, [content, hasLoadedContent, lastSavedContentSnapshot]);
+  }, [content, contentLanguage, hasLoadedContent, lastSavedContentSnapshot]);
 
-  function setManagedContent(nextContent: SiteContent) {
+  function setManagedContent(nextContent: SiteContent, language: Language = editLanguage) {
+    setContentLanguage(language);
     setContent(nextContent);
     setLastSavedContent(nextContent);
     setLastSavedContentSnapshot(getContentSnapshot(nextContent));
@@ -1429,7 +1562,7 @@ function ContentManager({ user, onLogout }: { user: AuthUser; onLogout: () => vo
     setStatus("");
 
     try {
-      const response = await fetch("/api/content", {
+      const response = await fetch(contentUrl(editLanguage), {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -1443,8 +1576,8 @@ function ContentManager({ user, onLogout }: { user: AuthUser; onLogout: () => vo
         throw new Error(data.message || "Sauvegarde impossible.");
       }
 
-      setManagedContent(mergeContent(data.content));
-      clearAdminDraft();
+      setManagedContent(mergeContent(data.content, baseContent));
+      clearAdminDraft(editLanguage);
       setDraftSavedAt("");
       setStatus("Contenu sauvegardé. Le portfolio public est à jour.");
     } catch (error) {
@@ -1455,20 +1588,20 @@ function ContentManager({ user, onLogout }: { user: AuthUser; onLogout: () => vo
   }
 
   function restoreDraft() {
-    const draft = readAdminDraft<SiteContent>();
+    const draft = readAdminDraft<SiteContent>(editLanguage);
     if (!draft) {
       setDraftSavedAt("");
       setStatus("Aucun brouillon local à restaurer.");
       return;
     }
 
-    setContent(mergeContent(draft.content));
+    setContent(mergeContent(draft.content, baseContent));
     setDraftSavedAt(draft.savedAt);
     setStatus("Brouillon restauré. Vérifie le contenu puis sauvegarde pour publier.");
   }
 
   function discardDraft() {
-    clearAdminDraft();
+    clearAdminDraft(editLanguage);
     setDraftSavedAt("");
     setContent(lastSavedContent);
     setStatus("Brouillon local supprimé. Retour à la dernière version sauvegardée.");
@@ -1593,9 +1726,35 @@ function ContentManager({ user, onLogout }: { user: AuthUser; onLogout: () => vo
             ajoute tes projets, puis sauvegarde pour publier.
           </p>
         </div>
-        <button className="secondary-action button-action" type="button" onClick={onLogout}>
-          <LogOut size={18} /> Quitter
-        </button>
+        <div className="admin-header-actions">
+          <div className="cv-segmented admin-language" role="group" aria-label="Langue du contenu modifié">
+            {(["fr", "en"] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={editLanguage === value}
+                onClick={() => {
+                  if (value === editLanguage) return;
+                  setEditLanguage(value);
+                  setStatus(hasUnsavedChanges ? "Brouillon conservé. Tu peux y revenir à tout moment." : "");
+                }}
+              >
+                {value === "fr" ? "Français" : "English"}
+              </button>
+            ))}
+          </div>
+          <a
+            className="secondary-action button-action"
+            href={`/cv-builder?lang=${editLanguage}${hasUnsavedChanges ? "&source=draft" : ""}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <FileText size={18} /> Générer le CV
+          </a>
+          <button className="secondary-action button-action" type="button" onClick={onLogout}>
+            <LogOut size={18} /> Quitter
+          </button>
+        </div>
       </div>
 
       <AdminOverview
@@ -1720,6 +1879,15 @@ function ContentManager({ user, onLogout }: { user: AuthUser; onLogout: () => vo
           <TextField label="WhatsApp" value={content.contactLinks.whatsapp} onChange={(value) => updateContactLink("whatsapp", value)} />
         </EditorCard>
 
+        <EditorCard title="CV généré">
+          <CvSettingsEditor
+            settings={content.cv}
+            projectNames={content.projects.map((project) => project.name)}
+            builderUrl={`/cv-builder?lang=${editLanguage}${hasUnsavedChanges ? "&source=draft" : ""}`}
+            onChange={(cv) => updateField("cv", cv)}
+          />
+        </EditorCard>
+
         <EditorCard title="CV public">
           <div className="cv-upload-box">
             <FileText size={26} />
@@ -1819,6 +1987,84 @@ function ContentManager({ user, onLogout }: { user: AuthUser; onLogout: () => vo
         </div>
       </div>
     </div>
+  );
+}
+
+function CvSettingsEditor({
+  settings,
+  projectNames,
+  builderUrl,
+  onChange,
+}: {
+  settings: SiteContent["cv"];
+  projectNames: string[];
+  builderUrl: string;
+  onChange: (settings: SiteContent["cv"]) => void;
+}) {
+  function update<K extends keyof SiteContent["cv"]>(key: K, value: SiteContent["cv"][K]) {
+    onChange({ ...settings, [key]: value });
+  }
+
+  function updateList(key: "languages" | "interests", index: number, value: string) {
+    update(key, settings[key].map((item, itemIndex) => (itemIndex === index ? value : item)));
+  }
+
+  function toggleProject(name: string) {
+    const isSelected = settings.projects.includes(name);
+    if (!isSelected && settings.projects.length >= 5) return;
+    update(
+      "projects",
+      isSelected ? settings.projects.filter((project) => project !== name) : projectNames.filter((project) => project === name || settings.projects.includes(project)),
+    );
+  }
+
+  return (
+    <>
+      <p className="admin-note">
+        Le CV est généré à partir de tout le portfolio (expérience, formation, projets, compétences, certifications). Ces champs
+        règlent ce qui lui est propre.
+      </p>
+      <TextField label="Titre du CV" value={settings.headline} onChange={(value) => update("headline", value)} />
+      <TextAreaField label="Résumé du profil" value={settings.summary} onChange={(value) => update("summary", value)} />
+      <TextField label="Localisation" value={settings.location} onChange={(value) => update("location", value)} />
+      <TextField label="Téléphone" value={settings.phone} onChange={(value) => update("phone", value)} />
+      <TextField label="Site du portfolio" value={settings.website} onChange={(value) => update("website", value)} />
+      <StringListEditor
+        title="Langues parlées"
+        items={settings.languages}
+        placeholder="Ex. Anglais — professionnel"
+        onAdd={() => update("languages", [...settings.languages, ""])}
+        onRemove={(index) => update("languages", settings.languages.filter((_, itemIndex) => itemIndex !== index))}
+        onUpdate={(index, value) => updateList("languages", index, value)}
+      />
+      <StringListEditor
+        title="Centres d'intérêt"
+        items={settings.interests}
+        placeholder="Ex. Systèmes d'exploitation"
+        onAdd={() => update("interests", [...settings.interests, ""])}
+        onRemove={(index) => update("interests", settings.interests.filter((_, itemIndex) => itemIndex !== index))}
+        onUpdate={(index, value) => updateList("interests", index, value)}
+      />
+      <fieldset className="structured-editor cv-project-picker">
+        <legend className="structured-editor-header">
+          <span>Projets mis en avant (5 au plus)</span>
+        </legend>
+        {projectNames.map((name) => (
+          <label key={name} className="cv-toggle">
+            <input
+              type="checkbox"
+              checked={settings.projects.includes(name)}
+              disabled={!settings.projects.includes(name) && settings.projects.length >= 5}
+              onChange={() => toggleProject(name)}
+            />
+            <span>{name}</span>
+          </label>
+        ))}
+      </fieldset>
+      <a className="primary-action button-action" href={builderUrl} target="_blank" rel="noreferrer">
+        <FileText size={18} /> Ouvrir le générateur de CV
+      </a>
+    </>
   );
 }
 
@@ -2389,205 +2635,126 @@ async function readJsonResponse(response: Response) {
 
 function Header({
   language,
+  theme,
   ui,
   onToggleLanguage,
+  onToggleTheme,
 }: {
   language: Language;
+  theme: Theme;
   ui: UiCopy;
   onToggleLanguage: () => void;
+  onToggleTheme: () => void;
 }) {
   const activeSection = useActiveSection(navSectionIds);
-  const [isNavigationOpen, setIsNavigationOpen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const headerRef = useRef<HTMLElement | null>(null);
-  const isNavigationOpenRef = useRef(isNavigationOpen);
-  const dragStateRef = useRef({
-    isDragging: false,
-    hasMoved: false,
-    originX: 18,
-    originY: 18,
-    startX: 0,
-    startY: 0,
-  });
-  const [widgetPosition, setWidgetPosition] = useState({ x: 18, y: 18 });
 
   useEffect(() => {
-    isNavigationOpenRef.current = isNavigationOpen;
-  }, [isNavigationOpen]);
+    if (!isMenuOpen) return;
 
-  function clampWidgetPosition(position: { x: number; y: number }) {
-    const menuWidth = Math.min(560, window.innerWidth - 18);
-    const openHeight = window.innerWidth <= 430 ? 488 : window.innerWidth <= 760 ? 382 : 332;
-    const width = isNavigationOpenRef.current ? menuWidth : 116;
-    const height = isNavigationOpenRef.current ? openHeight : 86;
-
-    return {
-      x: Math.min(Math.max(8, position.x), Math.max(8, window.innerWidth - width - 8)),
-      y: Math.min(Math.max(8, position.y), Math.max(8, window.innerHeight - height - 8)),
-    };
-  }
-
-  function startDragging(event: ReactPointerEvent<HTMLButtonElement>) {
-    if (event.button !== 0) return;
-    dragStateRef.current = {
-      isDragging: true,
-      hasMoved: false,
-      originX: widgetPosition.x,
-      originY: widgetPosition.y,
-      startX: event.clientX,
-      startY: event.clientY,
-    };
-    event.currentTarget.setPointerCapture(event.pointerId);
-  }
-
-  useEffect(() => {
-    function handlePointerMove(event: PointerEvent) {
-      if (!dragStateRef.current.isDragging) return;
-      const deltaX = event.clientX - dragStateRef.current.startX;
-      const deltaY = event.clientY - dragStateRef.current.startY;
-      if (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4) {
-        dragStateRef.current.hasMoved = true;
-      }
-      const nextPosition = clampWidgetPosition({
-        x: dragStateRef.current.originX + deltaX,
-        y: dragStateRef.current.originY + deltaY,
-      });
-      setWidgetPosition(nextPosition);
-    }
-
-    function handlePointerUp() {
-      dragStateRef.current.isDragging = false;
-    }
-
-    function handleResize() {
-      setWidgetPosition((current) => clampWidgetPosition(current));
-    }
-
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerUp);
-    window.addEventListener("resize", handleResize);
-    return () => {
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerUp);
-      window.removeEventListener("resize", handleResize);
-    };
-  }, []);
-
-  useEffect(() => {
-    setWidgetPosition((current) => clampWidgetPosition(current));
-  }, [isNavigationOpen]);
-
-  useEffect(() => {
-    if (!isNavigationOpen) return;
+    const desktopQuery = window.matchMedia("(min-width: 1061px)");
 
     function handlePointerDown(event: PointerEvent) {
-      const target = event.target as Node;
-      if (headerRef.current?.contains(target)) return;
-      setIsNavigationOpen(false);
+      if (headerRef.current?.contains(event.target as Node)) return;
+      setIsMenuOpen(false);
     }
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
-        setIsNavigationOpen(false);
+        setIsMenuOpen(false);
+      }
+    }
+
+    function handleViewportChange(event: MediaQueryListEvent) {
+      if (event.matches) {
+        setIsMenuOpen(false);
       }
     }
 
     document.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("keydown", handleKeyDown);
+    desktopQuery.addEventListener("change", handleViewportChange);
     return () => {
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
+      desktopQuery.removeEventListener("change", handleViewportChange);
     };
-  }, [isNavigationOpen]);
+  }, [isMenuOpen]);
+
+  const links = navItemIds.map((id) => (
+    <a
+      key={id}
+      href={`#${id}`}
+      className={activeSection === id ? "is-active" : undefined}
+      aria-current={activeSection === id ? "true" : undefined}
+      onClick={() => setIsMenuOpen(false)}
+    >
+      {ui.nav[id]}
+    </a>
+  ));
 
   return (
-    <header
-      className={`topbar floating-laptop-bar world-header ${isNavigationOpen ? "is-nav-open" : ""}`}
-      ref={headerRef}
-      style={{ left: widgetPosition.x, top: widgetPosition.y }}
-    >
-      <div className="floating-laptop-nav">
-        <button
-          className="laptop-trigger world-compass-trigger"
-          type="button"
-          aria-expanded={isNavigationOpen}
-          aria-controls="floating-laptop-screen"
-          aria-label={isNavigationOpen ? "Fermer la navigation" : "Ouvrir la navigation"}
-          onPointerDown={startDragging}
-          onClick={(event) => {
-            if (dragStateRef.current.hasMoved) {
-              event.preventDefault();
-              dragStateRef.current.hasMoved = false;
-              return;
-            }
-            setIsNavigationOpen((current) => !current);
-          }}
-        >
-          <span className="world-compass" aria-hidden="true">
-            <i />
-            <i />
-            <i />
-          </span>
-          <span className="world-trigger-copy">
-            <strong>SEVEN</strong>
-            <small>INDEX</small>
-          </span>
-        </button>
-      </div>
-
-      <motion.nav
-        id="floating-laptop-screen"
-        className="laptop-menu-panel"
-        aria-label="Navigation principale"
-        aria-hidden={!isNavigationOpen}
-        initial={false}
-        animate={isNavigationOpen ? "open" : "closed"}
-        variants={{
-          open: { opacity: 1, y: 0, scale: 1, filter: "blur(0px)" },
-          closed: { opacity: 0, y: -10, scale: 0.96, filter: "blur(8px)" },
-        }}
-        transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-      >
-        <div className="laptop-menu-top">
-          <span>sommaire</span>
-          <strong>{ui.nav[activeSection]}</strong>
-        </div>
-        <div className="laptop-menu-controls single-control">
+    <header className={`site-nav ${isMenuOpen ? "is-open" : ""} ${activeSection === "systeme" && !isMenuOpen ? "dark-island" : ""}`} ref={headerRef}>
+      <div className="nav-bar">
+        <a className="nav-brand" href="#top" aria-label={ui.brandAria} title={ui.brandTitle}>
+          Victoire Sawadogo
+        </a>
+        <nav className="nav-links" aria-label={ui.navAria}>
+          {links}
+        </nav>
+        <div className="nav-tools">
           <button
-            className="language-toggle"
+            className="nav-tool"
             type="button"
             onClick={onToggleLanguage}
             aria-label={`${ui.languageToggleLabel}: ${ui.switchTo}`}
             title={`${ui.languageToggleLabel}: ${ui.switchTo}`}
-            tabIndex={isNavigationOpen ? 0 : -1}
           >
-            <span>{language.toUpperCase()}</span>
-            <strong>{ui.switchTo}</strong>
+            <span aria-hidden="true">{language === "fr" ? "EN" : "FR"}</span>
+          </button>
+          <button
+            className="nav-tool"
+            type="button"
+            onClick={onToggleTheme}
+            aria-label={theme === "light" ? ui.themeDark : ui.themeLight}
+            title={theme === "light" ? ui.themeDark : ui.themeLight}
+          >
+            {theme === "light" ? <Moon size={16} aria-hidden="true" /> : <Sun size={16} aria-hidden="true" />}
+          </button>
+          <button
+            className="nav-menu-button"
+            type="button"
+            aria-expanded={isMenuOpen}
+            aria-controls="nav-sheet"
+            aria-label={isMenuOpen ? ui.menuClose : ui.menuOpen}
+            onClick={() => setIsMenuOpen((current) => !current)}
+          >
+            <span aria-hidden="true" />
+            <span aria-hidden="true" />
           </button>
         </div>
-        <div className="laptop-menu-links">
-          {navItemIds.map((id) => {
-            const NavIcon = navIcons[id];
-            return (
-              <a
-                key={id}
-                href={`#${id}`}
-                className={activeSection === id ? "is-active" : undefined}
-                aria-current={activeSection === id ? "page" : undefined}
-                tabIndex={isNavigationOpen ? 0 : -1}
-                onClick={() => setIsNavigationOpen(false)}
-              >
-                <NavIcon size={16} aria-hidden="true" />
-                <span>{ui.nav[id]}</span>
-              </a>
-            );
-          })}
-        </div>
-      </motion.nav>
+      </div>
+      <AnimatePresence>
+        {isMenuOpen ? (
+          <motion.nav
+            id="nav-sheet"
+            className="nav-sheet"
+            aria-label={ui.navMenuAria}
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.24, ease: appleEase }}
+          >
+            {links}
+          </motion.nav>
+        ) : null}
+      </AnimatePresence>
     </header>
   );
 }
 
-function useActiveSection(sectionIds: string[]) {
+function useActiveSection(sectionIds: readonly string[]) {
   const [activeSection, setActiveSection] = useState(sectionIds[0]);
 
   useEffect(() => {
@@ -2606,8 +2773,8 @@ function useActiveSection(sectionIds: string[]) {
         }
       },
       {
-        rootMargin: "-18% 0px -62% 0px",
-        threshold: [0.08, 0.2, 0.38],
+        rootMargin: "-30% 0px -60% 0px",
+        threshold: [0, 0.2, 0.5],
       },
     );
 
@@ -2618,171 +2785,203 @@ function useActiveSection(sectionIds: string[]) {
   return activeSection;
 }
 
-function Hero({ content, ui }: { content: SiteContent; ui: UiCopy }) {
+function usePortraitSrc() {
+  const [src, setSrc] = useState("/portrait.jpeg");
+
+  useEffect(() => {
+    fetch(`/profile-manifest.json?t=${Date.now()}`)
+      .then((response) => (response.ok ? readJsonResponse(response) : Promise.reject()))
+      .then((data) => {
+        if (data.url) {
+          setSrc(data.url);
+        }
+      })
+      .catch(() => undefined);
+  }, []);
+
+  return [src, () => setSrc("/portrait.jpeg")] as const;
+}
+
+function Hero({ content, ui, theme }: { content: SiteContent; ui: UiCopy; theme: Theme }) {
+  const heroRef = useRef<HTMLElement | null>(null);
+  const reduceMotion = useReducedMotion();
+  const { scrollYProgress } = useScroll({ target: heroRef, offset: ["start start", "end start"] });
+  const copyY = useTransform(scrollYProgress, [0, 1], [0, reduceMotion ? 0 : -80]);
+  const copyOpacity = useTransform(scrollYProgress, [0, 0.7], [1, reduceMotion ? 1 : 0]);
+  const visualScale = useTransform(scrollYProgress, [0, 1], [1, reduceMotion ? 1 : 0.82]);
+  const visualOpacity = useTransform(scrollYProgress, [0, 0.9], [1, reduceMotion ? 1 : 0.2]);
+
   return (
-    <section className="hero section immersive-hero" id="top">
-      <div className="hero-stage" aria-hidden="true">
-        <span />
-        <span />
-        <span />
-        <div className="world-tree">
-          <i className="tree-crown crown-one" />
-          <i className="tree-crown crown-two" />
-          <i className="tree-crown crown-three" />
-          <i className="tree-trunk" />
-          <i className="tree-root root-one" />
-          <i className="tree-root root-two" />
-          <i className="tree-root root-three" />
-        </div>
+    <section className="hero" id="top" ref={heroRef}>
+      <div className="hero-glow" aria-hidden="true" />
+      <div className="container hero-grid">
+        <motion.div className="hero-copy" style={{ y: copyY, opacity: copyOpacity }}>
+          <motion.div initial="hidden" animate="visible" variants={staggerContainer}>
+            <motion.p className="hero-status" variants={staggerItem}>
+              <span aria-hidden="true" />
+              {ui.availability}
+            </motion.p>
+            <motion.p className="hero-kicker" variants={staggerItem}>
+              {content.profileCaption}
+            </motion.p>
+            <motion.h1 variants={staggerItem}>{content.heroTitle}</motion.h1>
+            <motion.p className="hero-lead" variants={staggerItem}>
+              {content.heroLead}
+            </motion.p>
+            <motion.div className="hero-actions" variants={staggerItem}>
+              <a className="button button-primary" href="#projets">
+                {ui.heroProjects}
+              </a>
+              <a className="button-link" href="#contact">
+                {ui.heroContact} <ChevronRight size={18} aria-hidden="true" />
+              </a>
+            </motion.div>
+          </motion.div>
+        </motion.div>
+        <motion.div
+          className="hero-visual"
+          style={{ scale: visualScale, opacity: visualOpacity }}
+          initial={{ opacity: 0, scale: 0.92 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 1.2, ease: appleEase }}
+        >
+          <SystemsGlobe labels={content.techMarquee} theme={theme} animate={!isE2E} ariaLabel={ui.heroVisualAria} />
+          <p className="hero-visual-caption">{ui.heroVisualCaption}</p>
+        </motion.div>
       </div>
-      <motion.div
-        className="hero-portrait"
-        initial={{ opacity: 0, y: 24 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8 }}
-        aria-label="Portrait de Victoire Sawadogo"
-      >
-        <img src="/portrait.jpeg" alt="Portrait de Victoire Sawadogo" />
-        {isE2E ? (
-          <div className="world-scene world-scene-fallback" aria-hidden="true" />
-        ) : (
-          <Suspense fallback={<div className="world-scene world-scene-fallback" aria-hidden="true" />}>
-            <WorldScene />
-          </Suspense>
-        )}
-        <div className="hero-image-panel">
-          <span className="hero-boot">{ui.heroBoot}</span>
-          <span className="hero-world-label">Portfolio personnel / lecture éditoriale</span>
-          <p className="eyebrow">
-            <Terminal size={16} /> {content.heroEyebrow}
-          </p>
-          <h1>{content.heroTitle}</h1>
-          <p className="hero-lead">{content.heroLead}</p>
-          <div className="hero-actions">
-            <a className="primary-action" href="#projets">
-              {ui.heroProjects} <ArrowUpRight size={18} />
-            </a>
-            <a className="secondary-action" href="#contact">
-              {ui.heroContact}
-            </a>
-          </div>
-        </div>
-        <div className="hero-portrait-caption">
-        <span>Victoire Sawadogo</span>
-          <strong>{content.profileCaption}</strong>
-        </div>
-      </motion.div>
-
-      <div className="hero-metrics hero-metrics-inline" aria-label="Résumé des compétences">
-        {content.metrics.map(([label, value]) => (
-          <div key={label}>
-            <strong>{label}</strong>
-            <span>{value}</span>
-          </div>
-        ))}
-      </div>
-
-      <TechMarquee items={content.techMarquee} ui={ui} />
+      <RecruiterBrief content={content} ui={ui} />
     </section>
   );
 }
 
-function RecruiterBrief({ ui }: { ui: UiCopy }) {
+function RecruiterBrief({ content, ui }: { content: SiteContent; ui: UiCopy }) {
   const links = [
     { label: ui.recruiterBriefLinks.projects, href: "#projets", icon: BriefcaseBusiness },
     { label: ui.recruiterBriefLinks.resume, href: "#cv", icon: FileText },
     { label: ui.recruiterBriefLinks.contact, href: "#contact", icon: Mail },
   ];
+  const icons = [Network, Layers3, ShieldCheck];
 
   return (
-    <section className="recruiter-brief" aria-label={ui.recruiterBriefAria}>
-      <div className="recruiter-brief-copy">
-        <span>{ui.recruiterBriefTitle}</span>
-        <p>{ui.recruiterBriefIntro}</p>
-      </div>
-      <div className="recruiter-brief-items">
-        {ui.recruiterBriefItems.map(([label, value]) => (
-          <article key={label}>
-            <strong>{label}</strong>
-            <span>{value}</span>
-          </article>
-        ))}
-      </div>
-      <nav className="recruiter-brief-links" aria-label={ui.recruiterBriefAria}>
-        {links.map(({ label, href, icon: Icon }) => (
-          <a key={href} href={href}>
-            <Icon size={16} />
-            <span>{label}</span>
-          </a>
-        ))}
-      </nav>
-    </section>
-  );
-}
-
-function SystemConstellation({ content }: { content: SiteContent }) {
-  const projectNodes = content.projects.slice(0, 4);
-
-  return (
-    <div className="system-constellation" aria-hidden="true">
-      <div className="constellation-core">
-        <ProfileImage />
-        <span>VS</span>
-      </div>
-      <div className="constellation-ring one" />
-      <div className="constellation-ring two" />
-      {projectNodes.map((project, index) => (
-        <div className={`constellation-node node-${index + 1}`} key={project.name}>
-          <strong>{project.name.slice(0, 2).toUpperCase()}</strong>
-          <span>{project.tags[0] || "build"}</span>
-        </div>
-      ))}
-      <div className="constellation-thread thread-one" />
-      <div className="constellation-thread thread-two" />
-      <div className="constellation-thread thread-three" />
+    <div className="container">
+      <section className="brief" aria-label={ui.recruiterBriefAria}>
+        <motion.dl
+          className="brief-items"
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.3 }}
+          variants={staggerContainer}
+        >
+          {content.metrics.map(([label, value], index) => {
+            const Icon = icons[index] || Sparkles;
+            return (
+              <motion.div key={label} className="brief-item" variants={staggerItem}>
+                <span className="tile-icon" aria-hidden="true">
+                  <Icon size={20} />
+                </span>
+                <dt>{label}</dt>
+                <dd>{value}</dd>
+              </motion.div>
+            );
+          })}
+        </motion.dl>
+        <nav className="brief-links" aria-label={ui.recruiterBriefLinksAria}>
+          <span>{ui.recruiterBriefTitle}</span>
+          {links.map(({ label, href, icon: Icon }) => (
+            <a key={href} href={href}>
+              <Icon size={15} aria-hidden="true" />
+              {label}
+            </a>
+          ))}
+        </nav>
+      </section>
     </div>
   );
 }
 
-function QuickAccess() {
-  const links = [
-    { label: "Projets", href: "#projets", icon: BriefcaseBusiness },
-    { label: "CV", href: "#cv", icon: FileText },
-    { label: "Certifications", href: "#certifications", icon: ShieldCheck },
-    { label: "Contact", href: "#contact", icon: Mail },
-    { label: "Gestion", href: "/login", icon: LockKeyhole },
-  ];
-
+function SectionHeading({
+  kicker,
+  title,
+  intro,
+  action,
+}: {
+  kicker: string;
+  title: string;
+  intro?: string;
+  action?: React.ReactNode;
+}) {
   return (
-    <nav className="quick-access" aria-label="Accès rapides">
-      {links.map(({ label, href, icon: Icon }) => (
-        <a key={label} href={href} aria-label={`Accès rapide ${label}`}>
-          <Icon size={18} />
-          <span>{label}</span>
-        </a>
-      ))}
-    </nav>
+    <header className={`section-heading ${action ? "has-action" : ""}`}>
+      <motion.div
+        initial={{ opacity: 0, y: 32, rotateX: 18 }}
+        whileInView={{ opacity: 1, y: 0, rotateX: 0 }}
+        viewport={{ once: true, amount: 0.4 }}
+        transition={{ duration: 0.9, ease: appleEase }}
+        style={{ transformPerspective: 900, transformOrigin: "50% 100%" }}
+      >
+        <p className="kicker">{kicker}</p>
+        <h2>{title}</h2>
+        {intro ? <p className="section-intro">{intro}</p> : null}
+      </motion.div>
+      {action ? <div className="section-action">{action}</div> : null}
+    </header>
   );
 }
 
-function TerminalPanelFallback({ ui }: { ui: UiCopy }) {
-  return (
-    <aside className="terminal-panel terminal-panel-loading" aria-label={ui.terminal.loadingAria}>
-      <div className="terminal-top">
-        <span />
-        <span />
-        <span />
-        <strong>{ui.terminal.title}</strong>
-        <em>{ui.terminal.loadingMode}</em>
-      </div>
-      <div className="terminal-body">
-        <div className="terminal-entry">
-          <p>{ui.terminal.loadingLineOne}</p>
-          <p>{ui.terminal.loadingLineTwo}</p>
-        </div>
-      </div>
-    </aside>
-  );
+const staggerContainer = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.08 } },
+};
+
+const staggerItem = {
+  hidden: { opacity: 0, y: 24 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.7, ease: appleEase } },
+};
+
+// Gives an element a pointer-driven 3D tilt with a soft glare. Only active with a fine pointer
+// and when the visitor has not asked for reduced motion.
+function useTilt<T extends HTMLElement>(maxDegrees = 6) {
+  const ref = useRef<T | null>(null);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    let frame = 0;
+
+    function handleMove(event: PointerEvent) {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const rect = element!.getBoundingClientRect();
+        const x = (event.clientX - rect.left) / rect.width;
+        const y = (event.clientY - rect.top) / rect.height;
+        element!.style.setProperty("--tilt-x", `${(0.5 - y) * maxDegrees}deg`);
+        element!.style.setProperty("--tilt-y", `${(x - 0.5) * maxDegrees}deg`);
+        element!.style.setProperty("--glare-x", `${x * 100}%`);
+        element!.style.setProperty("--glare-y", `${y * 100}%`);
+        element!.classList.add("is-tilting");
+      });
+    }
+
+    function handleLeave() {
+      cancelAnimationFrame(frame);
+      element!.style.setProperty("--tilt-x", "0deg");
+      element!.style.setProperty("--tilt-y", "0deg");
+      element!.classList.remove("is-tilting");
+    }
+
+    element.addEventListener("pointermove", handleMove);
+    element.addEventListener("pointerleave", handleLeave);
+    return () => {
+      cancelAnimationFrame(frame);
+      element.removeEventListener("pointermove", handleMove);
+      element.removeEventListener("pointerleave", handleLeave);
+    };
+  }, [maxDegrees]);
+
+  return ref;
 }
 
 type ShellEntry = {
@@ -2799,11 +2998,7 @@ function TerminalPanel({ content, ui }: { content: SiteContent; ui: UiCopy }) {
   const [mode, setMode] = useState<ShellMode>("bash");
   const [aliases, setAliases] = useState<Record<string, string>>(defaultAliases);
   const [memory, setMemory] = useState<VictoireMemory>(() => loadVictoireMemory());
-  const [entries, setEntries] = useState<ShellEntry[]>([
-    {
-      output: [ui.terminal.loadingLineOne, ui.terminal.loadingLineTwo],
-    },
-  ]);
+  const [entries, setEntries] = useState<ShellEntry[]>([]);
   const [history, setHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
@@ -2843,11 +3038,7 @@ function TerminalPanel({ content, ui }: { content: SiteContent; ui: UiCopy }) {
     }
 
     if (command.toLowerCase() === "reboot") {
-      setEntries([
-        {
-          output: [ui.terminal.loadingLineOne, ui.terminal.loadingLineTwo],
-        },
-      ]);
+      setEntries([]);
       setCurrentDirectory("/home/victoire");
       setMode("bash");
       setAliases(defaultAliases);
@@ -2940,12 +3131,18 @@ function TerminalPanel({ content, ui }: { content: SiteContent; ui: UiCopy }) {
   return (
     <motion.aside
       className="terminal-panel"
-      initial={{ opacity: 0, y: 18, rotate: -1.5 }}
-      animate={{ opacity: 1, y: 0, rotate: -1.5 }}
-      transition={{ duration: 0.7, delay: 0.35 }}
+      initial={{ opacity: 0, y: 18 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      transition={{ duration: 0.6, ease: appleEase }}
       aria-label={ui.terminal.loadingAria}
     >
       <div className="terminal-top">
+        <span className="terminal-dots" aria-hidden="true">
+          <i />
+          <i />
+          <i />
+        </span>
         <strong>{ui.terminal.title}</strong>
         <em>{ui.terminal.simple}</em>
       </div>
@@ -3028,92 +3225,259 @@ function TerminalPanel({ content, ui }: { content: SiteContent; ui: UiCopy }) {
   );
 }
 
-function ProfileImage() {
-  const [src, setSrc] = useState("/profile-placeholder.svg");
+function SystemLayers({ ui, language }: { ui: UiCopy; language: Language }) {
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const reduceMotion = useReducedMotion();
+  const isStatic = Boolean(reduceMotion) || isE2E;
+  const [activeIndex, setActiveIndex] = useState(0);
+  const { scrollYProgress } = useScroll({ target: sectionRef, offset: ["start start", "end end"] });
+  const gap = useTransform(scrollYProgress, [0, 0.14], ["14px", "74px"]);
+  const tiltX = useTransform(scrollYProgress, [0, 1], [60, 50]);
+  const spin = useTransform(scrollYProgress, [0, 1], [-44, -26]);
+  const stageTransform = useMotionTemplate`rotateX(${tiltX}deg) rotateZ(${spin}deg)`;
+  const activeLayer = systemLayers[activeIndex];
 
-  useEffect(() => {
-    fetch(`/profile-manifest.json?t=${Date.now()}`)
-      .then((response) => (response.ok ? readJsonResponse(response) : Promise.reject()))
-      .then((data) => {
-        if (data.url) {
-          setSrc(data.url);
-        }
-      })
-      .catch(() => setSrc("/profile-placeholder.svg"));
-  }, []);
+  useMotionValueEvent(scrollYProgress, "change", (value) => {
+    const step = Math.floor(((value - 0.06) / 0.94) * systemLayers.length);
+    setActiveIndex(Math.min(systemLayers.length - 1, Math.max(0, step)));
+  });
+
+  const stageStyle = (isStatic ? { "--gap": "64px" } : { transform: stageTransform, "--gap": gap }) as unknown as MotionStyle;
 
   return (
-    <div className="profile-frame">
-      <img
-        src={src}
-        alt="Portrait professionnel"
-        onError={() => {
-          if (src !== "/profile-placeholder.svg") {
-            setSrc("/profile-placeholder.svg");
-          }
-        }}
-      />
-    </div>
-  );
-}
-
-function TechMarquee({ items, ui }: { items: string[]; ui: UiCopy }) {
-  return (
-    <div className="tech-marquee" aria-label={ui.techMarqueeAria}>
-      <motion.div
-        animate={{ x: ["0%", "-50%"] }}
-        transition={{ duration: 28, ease: "linear", repeat: Infinity }}
-      >
-        {[...items, ...items].map((tech, index) => (
-          <span key={`${tech}-${index}`}>{tech}</span>
-        ))}
-      </motion.div>
-    </div>
-  );
-}
-
-function About({ content, ui }: { content: SiteContent; ui: UiCopy }) {
-  return (
-    <RevealSection className="about section" id="profil">
-      <div className="section-kicker">{ui.sectionKickers.profile}</div>
-      <div className="split">
-        <h2>{content.aboutTitle}</h2>
-        <div className="body-copy">
-          {content.aboutParagraphs.map((paragraph) => (
-            <p key={paragraph}>{paragraph}</p>
-          ))}
-          <div className="command-strip" aria-label={ui.workflowAria}>
-            {ui.workflowCommands.map(([step, command, detail]) => (
-              <article key={command}>
-                <span>{step}</span>
-                <code>{command}</code>
-                <p>{detail}</p>
-              </article>
-            ))}
+    <section
+      className={`layers dark-island ${isStatic ? "is-static" : ""}`}
+      id="systeme"
+      ref={sectionRef}
+      aria-labelledby="layers-title"
+      style={{ "--steps": systemLayers.length } as React.CSSProperties}
+    >
+      <div className="layers-sticky">
+        <div className="container layers-grid">
+          <div className="layers-copy">
+            <p className="kicker">{ui.layersKicker}</p>
+            <h2 id="layers-title">{ui.layersTitle}</h2>
+            {isStatic ? (
+              <ol className="layers-list">
+                {systemLayers.map((layer, index) => (
+                  <li key={layer.id}>
+                    <LayerText layer={layer} index={index} ui={ui} language={language} />
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <>
+                <div className="layers-step" aria-live="polite">
+                  <AnimatePresence mode="wait" initial={false}>
+                    <motion.div
+                      key={activeLayer.id}
+                      initial={{ opacity: 0, y: 18 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -18 }}
+                      transition={{ duration: 0.32, ease: appleEase }}
+                    >
+                      <LayerText layer={activeLayer} index={activeIndex} ui={ui} language={language} />
+                    </motion.div>
+                  </AnimatePresence>
+                </div>
+                <div className="layers-progress" aria-hidden="true">
+                  {systemLayers.map((layer, index) => (
+                    <span
+                      key={layer.id}
+                      className={index === activeIndex ? "is-active" : index < activeIndex ? "is-done" : undefined}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+          <div className="layers-visual" aria-hidden="true">
+            <motion.div className="layers-stage" style={stageStyle}>
+              {systemLayers.map((layer, index) => (
+                <div
+                  key={layer.id}
+                  className={`layer-plane ${!isStatic && index === activeIndex ? "is-active" : ""}`}
+                  style={{ "--z": systemLayers.length - 1 - index } as React.CSSProperties}
+                >
+                  <span className="layer-plane-title">{layer.title[language]}</span>
+                  <span className="layer-plane-tech">{layer.tech.slice(0, 3).join(" · ")}</span>
+                </div>
+              ))}
+            </motion.div>
           </div>
         </div>
       </div>
-    </RevealSection>
+    </section>
   );
 }
 
-function Identity({ content, ui }: { content: SiteContent; ui: UiCopy }) {
+function LayerText({
+  layer,
+  index,
+  ui,
+  language,
+}: {
+  layer: (typeof systemLayers)[number];
+  index: number;
+  ui: UiCopy;
+  language: Language;
+}) {
+  function openProject(projectName: string) {
+    window.dispatchEvent(new CustomEvent("victoire-os:project", { detail: { projectName, intent: "peek" } }));
+  }
+
   return (
-    <RevealSection className="identity section" id="identite">
-      <div className="section-heading">
-        <div>
-          <div className="section-kicker">{ui.sectionKickers.identity}</div>
-          <h2>{content.identityTitle}</h2>
-        </div>
-        <p>{content.identityIntro}</p>
-      </div>
-      <div className="identity-grid">
-        {content.identityPillars.map((pillar) => (
-          <article key={pillar.title} className="identity-card">
-            <h3>{pillar.title}</h3>
-            <p>{pillar.text}</p>
-          </article>
+    <div className="layer-text">
+      <span className="layer-index">
+        {String(index + 1).padStart(2, "0")} / {String(systemLayers.length).padStart(2, "0")}
+      </span>
+      <h3>{layer.title[language]}</h3>
+      <p>{layer.text[language]}</p>
+      <ul className="tag-list">
+        {layer.tech.map((tech) => (
+          <li key={tech}>{tech}</li>
         ))}
+      </ul>
+      <div className="layer-proofs">
+        <span>{ui.certificationsProofs}</span>
+        {layer.proofs.map((projectName) => (
+          <button key={projectName} type="button" onClick={() => openProject(projectName)}>
+            {projectName} <ArrowUpRight size={14} aria-hidden="true" />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Lights a sentence up word by word as it scrolls through the viewport.
+function ScrollRevealText({ text, className }: { text: string; className: string }) {
+  const ref = useRef<HTMLParagraphElement | null>(null);
+  const reduceMotion = useReducedMotion();
+  const { scrollYProgress } = useScroll({ target: ref, offset: ["start 0.9", "end 0.55"] });
+  const words = text.split(" ");
+
+  if (reduceMotion || isE2E) {
+    return (
+      <p className={className} ref={ref}>
+        {text}
+      </p>
+    );
+  }
+
+  return (
+    <p className={className} ref={ref}>
+      {words.map((word, index) => (
+        <RevealWord key={`${word}-${index}`} word={word} progress={scrollYProgress} range={[index / words.length, (index + 1) / words.length]} />
+      ))}
+    </p>
+  );
+}
+
+function RevealWord({ word, progress, range }: { word: string; progress: MotionValue<number>; range: [number, number] }) {
+  const opacity = useTransform(progress, range, [0.16, 1]);
+  return (
+    <>
+      <motion.span style={{ opacity }}>{word}</motion.span>{" "}
+    </>
+  );
+}
+
+function CountUp({ value }: { value: number }) {
+  const ref = useRef<HTMLSpanElement | null>(null);
+  const isInView = useInView(ref, { once: true, amount: 0.6 });
+  const reduceMotion = useReducedMotion();
+  const skipAnimation = Boolean(reduceMotion) || isE2E;
+  const [display, setDisplay] = useState(skipAnimation ? value : 0);
+
+  useEffect(() => {
+    if (skipAnimation) {
+      setDisplay(value);
+      return;
+    }
+    if (!isInView) return;
+    const controls = animate(0, value, {
+      duration: 1.4,
+      ease: appleEase,
+      onUpdate: (latest) => setDisplay(Math.round(latest)),
+    });
+    return () => controls.stop();
+  }, [isInView, skipAnimation, value]);
+
+  return <span ref={ref}>{display}</span>;
+}
+
+function About({ content, ui }: { content: SiteContent; ui: UiCopy }) {
+  const [portraitSrc, resetPortrait] = usePortraitSrc();
+  const portraitRef = useTilt<HTMLElement>(8);
+  const [statement, ...facts] = content.aboutParagraphs;
+  const factIcons = [BriefcaseBusiness, GraduationCap, Globe2];
+
+  return (
+    <RevealSection className="section section-alt" id="profil">
+      <div className="container">
+        <SectionHeading kicker={ui.sectionKickers.profile} title={content.aboutTitle} />
+        <div className="about-layout">
+          <figure className="portrait-card tilt" ref={portraitRef}>
+            <img
+              src={portraitSrc}
+              alt="Portrait de Victoire Sawadogo"
+              width={896}
+              height={1003}
+              loading="lazy"
+              onError={resetPortrait}
+            />
+            <figcaption>
+              <strong>Victoire Sawadogo</strong>
+              <span>{content.heroEyebrow}</span>
+            </figcaption>
+          </figure>
+          <div className="about-body">
+            {statement ? <ScrollRevealText className="about-statement" text={statement} /> : null}
+            <motion.div
+              className="fact-grid"
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, amount: 0.2 }}
+              variants={staggerContainer}
+            >
+              {facts.map((fact, index) => {
+                const Icon = factIcons[index] || Sparkles;
+                return (
+                  <motion.article className="tile fact" key={fact} variants={staggerItem}>
+                    <span className="tile-icon" aria-hidden="true">
+                      <Icon size={20} />
+                    </span>
+                    <p>{fact}</p>
+                  </motion.article>
+                );
+              })}
+            </motion.div>
+          </div>
+        </div>
+        <div className="pillars" id="identite">
+          <div className="pillars-head">
+            <h3>{content.identityTitle}</h3>
+            <p>{content.identityIntro}</p>
+          </div>
+          <motion.div
+            className="pillar-grid"
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, amount: 0.3 }}
+            variants={staggerContainer}
+          >
+            {content.identityPillars.map((pillar, index) => (
+              <motion.article key={pillar.title} className="tile pillar" variants={staggerItem}>
+                <span className="pillar-index" aria-hidden="true">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <h4>{pillar.title}</h4>
+                <p>{pillar.text}</p>
+              </motion.article>
+            ))}
+          </motion.div>
+        </div>
       </div>
     </RevealSection>
   );
@@ -3121,25 +3485,21 @@ function Identity({ content, ui }: { content: SiteContent; ui: UiCopy }) {
 
 function Journey({ content, ui }: { content: SiteContent; ui: UiCopy }) {
   return (
-    <RevealSection className="journey section" id="parcours">
-      <div className="section-heading">
-        <div>
-          <div className="section-kicker">{ui.sectionKickers.journey}</div>
-          <h2>{content.journeyTitle}</h2>
+    <RevealSection className="section section-alt" id="parcours">
+      <div className="container">
+        <SectionHeading kicker={ui.sectionKickers.journey} title={content.journeyTitle} intro={content.journeyIntro} />
+        <div className="journey-grid">
+          <TimelineColumn
+            icon={<BriefcaseBusiness size={20} aria-hidden="true" />}
+            title={ui.journeyProfessional}
+            items={content.professionalTimeline}
+          />
+          <TimelineColumn
+            icon={<GraduationCap size={20} aria-hidden="true" />}
+            title={ui.journeyAcademic}
+            items={content.academicTimeline}
+          />
         </div>
-        <p>{content.journeyIntro}</p>
-      </div>
-      <div className="journey-grid">
-        <TimelineColumn
-          icon={<BriefcaseBusiness size={20} />}
-          title={ui.journeyProfessional}
-          items={content.professionalTimeline}
-        />
-        <TimelineColumn
-          icon={<GraduationCap size={20} />}
-          title={ui.journeyAcademic}
-          items={content.academicTimeline}
-        />
       </div>
     </RevealSection>
   );
@@ -3155,56 +3515,139 @@ function TimelineColumn({
   items: { period: string; title: string; detail: string }[];
 }) {
   return (
-    <div className="journey-column">
-      <div className="journey-title">
+    <div className="tile timeline">
+      <h3 className="timeline-title">
         {icon}
-        <h3>{title}</h3>
-      </div>
-      <div className="journey-line">
+        <span>{title}</span>
+      </h3>
+      <ol>
         {items.map((item) => (
-          <article key={`${item.period}-${item.title}`}>
-            <span>{item.period}</span>
+          <li key={`${item.period}-${item.title}`}>
+            <span className="timeline-period">{item.period}</span>
             <h4>{item.title}</h4>
             <p>{item.detail}</p>
-          </article>
+          </li>
         ))}
-      </div>
+      </ol>
     </div>
   );
 }
 
 function Stack({ content, ui }: { content: SiteContent; ui: UiCopy }) {
+  const [activeTitle, setActiveTitle] = useState(content.stacks[0]?.title || "");
+  const activeGroup = content.stacks.find((group) => group.title === activeTitle) || content.stacks[0];
+
+  useEffect(() => {
+    if (!content.stacks.some((group) => group.title === activeTitle)) {
+      setActiveTitle(content.stacks[0]?.title || "");
+    }
+  }, [activeTitle, content.stacks]);
+
   return (
-    <RevealSection className="section" id="stack">
-      <div className="section-heading">
-        <div>
-          <div className="section-kicker">{ui.sectionKickers.stack}</div>
-          <h2>{ui.stackTitle}</h2>
+    <RevealSection className="section section-alt" id="stack">
+      <div className="container">
+        <SectionHeading kicker={ui.sectionKickers.stack} title={ui.stackTitle} intro={ui.stackIntro} />
+        <div className="stack-tabs segmented" role="tablist" aria-label={ui.stackTabsAria}>
+          {content.stacks.map((group) => {
+            const Icon = stackIcons[group.title as keyof typeof stackIcons] || Layers3;
+            const isActive = group.title === activeGroup?.title;
+            return (
+              <button
+                key={group.title}
+                type="button"
+                role="tab"
+                id={`stack-tab-${slugify(group.title)}`}
+                aria-selected={isActive}
+                aria-controls="stack-panel"
+                className={isActive ? "is-active" : undefined}
+                onClick={() => setActiveTitle(group.title)}
+              >
+                <Icon size={15} aria-hidden="true" />
+                {group.title}
+                <span className="stack-tab-count">{group.items.length}</span>
+              </button>
+            );
+          })}
         </div>
-        <p>{ui.stackIntro}</p>
-      </div>
-      <div className="stack-grid">
-        {content.stacks.map(({ title, items }) => {
-          const Icon = stackIcons[title as keyof typeof stackIcons] || Layers3;
-          return (
-          <article className="stack-card" key={title}>
-            <div className="stack-icon">
-              <Icon size={24} />
-            </div>
-            <h3>{title}</h3>
-            <ul className="tech-list">
-              {items.map((item) => (
-                <li key={item.name}>
-                  <img src={item.logo} alt="" loading="lazy" />
-                  <span>{item.name}</span>
-                </li>
-              ))}
-            </ul>
-          </article>
-          );
-        })}
+        {activeGroup ? (
+          <div
+            className="stack-panel"
+            id="stack-panel"
+            role="tabpanel"
+            aria-labelledby={`stack-tab-${slugify(activeGroup.title)}`}
+          >
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.ul
+                key={activeGroup.title}
+                className="tech-grid"
+                initial="hidden"
+                animate="visible"
+                exit={{ opacity: 0, y: -12, transition: { duration: 0.18 } }}
+                variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.035 } } }}
+              >
+                {activeGroup.items.map((item) => (
+                  <motion.li
+                    key={item.name}
+                    className="tech-tile"
+                    variants={{
+                      hidden: { opacity: 0, y: 18, rotateX: -30 },
+                      visible: { opacity: 1, y: 0, rotateX: 0, transition: { duration: 0.55, ease: appleEase } },
+                    }}
+                    style={{ transformPerspective: 600 }}
+                  >
+                    <span className="tech-logo">
+                      <img src={item.logo} alt="" loading="lazy" width={40} height={40} />
+                    </span>
+                    <span>{item.name}</span>
+                  </motion.li>
+                ))}
+              </motion.ul>
+            </AnimatePresence>
+          </div>
+        ) : null}
       </div>
     </RevealSection>
+  );
+}
+
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function FlowDiagram({
+  projectName,
+  language,
+  variant,
+  label,
+}: {
+  projectName: string;
+  language: Language;
+  variant: "compact" | "full";
+  label: string;
+}) {
+  const nodes = getArchitecture(projectName);
+  if (!nodes.length) return null;
+
+  return (
+    <div className={`flow flow-${variant}`}>
+      {variant === "full" ? <p className="flow-label">{label}</p> : null}
+      <ol className="flow-track" aria-label={label}>
+        {nodes.map((node, index) => (
+          <li key={`${getNodeName(node, language)}-${index}`} className="flow-step" style={{ "--i": index } as React.CSSProperties}>
+            {index > 0 ? <span className="flow-link" aria-hidden="true" /> : null}
+            <span className="flow-node">
+              <strong>{getNodeName(node, language)}</strong>
+              {variant === "full" ? <small>{node.role[language]}</small> : null}
+            </span>
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }
 
@@ -3227,7 +3670,9 @@ function Projects({ content, ui, language }: { content: SiteContent; ui: UiCopy;
       if (!project) return;
       setProjectQuery("");
       setActiveProjectTag(ui.allProjects);
-      document.getElementById("projets")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (detail.intent !== "peek") {
+        document.getElementById("projets")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
       setSelectedProject(project);
     }
 
@@ -3254,107 +3699,163 @@ function Projects({ content, ui, language }: { content: SiteContent; ui: UiCopy;
 
   return (
     <RevealSection className="section" id="projets">
-      <div className="section-heading">
-        <div>
-          <div className="section-kicker">{ui.sectionKickers.projects}</div>
-          <h2>{ui.projectsTitle}</h2>
+      <div className="container">
+        <SectionHeading
+          kicker={ui.sectionKickers.projects}
+          title={ui.projectsTitle}
+          action={
+            <a className="button-link" href="#contact">
+              {ui.projectsCta} <ChevronRight size={18} aria-hidden="true" />
+            </a>
+          }
+        />
+        <div className="project-controls" aria-label={ui.projectFiltersAria} role="group">
+          <label className="search-field">
+            <Search size={17} aria-hidden="true" />
+            <span className="visually-hidden">{ui.projectSearchLabel}</span>
+            <input
+              type="search"
+              value={projectQuery}
+              onChange={(event) => setProjectQuery(event.target.value)}
+              placeholder={ui.projectSearchPlaceholder}
+            />
+          </label>
+          <div className="segmented" role="group" aria-label={ui.projectFilterAria}>
+            {projectTags.map((tag) => (
+              <button
+                key={tag}
+                type="button"
+                className={activeProjectTag === tag ? "is-active" : undefined}
+                aria-pressed={activeProjectTag === tag}
+                onClick={() => setActiveProjectTag(tag)}
+              >
+                {tag}
+              </button>
+            ))}
+          </div>
         </div>
-        <a className="ghost-link" href="#contact">
-          {ui.projectsCta} <ArrowUpRight size={16} />
-        </a>
-      </div>
-      <div className="project-controls" aria-label={ui.projectFiltersAria}>
-        <label className="project-search">
-          <span>{ui.projectSearchLabel}</span>
-          <input
-            type="search"
-            value={projectQuery}
-            onChange={(event) => setProjectQuery(event.target.value)}
-            placeholder={ui.projectSearchPlaceholder}
-          />
-        </label>
-        <div className="project-filter-row" role="list" aria-label={ui.projectFilterAria}>
-          {projectTags.map((tag) => (
-            <button
-              key={tag}
-              type="button"
-              className={activeProjectTag === tag ? "is-active" : undefined}
-              onClick={() => setActiveProjectTag(tag)}
-            >
-              {tag}
-            </button>
+        <motion.div
+          className="project-grid"
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.05 }}
+          variants={staggerContainer}
+        >
+          {filteredProjects.map((project, index) => (
+            <motion.div className="project-cell" key={project.name} variants={staggerItem}>
+              <ProjectCard
+                project={project}
+                featured={index === 0}
+                ui={ui}
+                language={language}
+                onOpen={() => setSelectedProject(project)}
+              />
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
+        {!filteredProjects.length ? (
+          <div className="tile project-empty-state">
+            <strong>{ui.noProjectTitle}</strong>
+            <p>{ui.noProjectText}</p>
+            <button
+              className="button button-secondary"
+              type="button"
+              onClick={() => {
+                setProjectQuery("");
+                setActiveProjectTag(ui.allProjects);
+              }}
+            >
+              {ui.reset}
+            </button>
+          </div>
+        ) : null}
       </div>
-      <div className="project-grid">
-        {filteredProjects.map((project, index) => (
-          <motion.article
-            className="project-card project-card-compact"
-            key={project.name}
-            whileHover={{ y: -4 }}
-            transition={{ type: "spring", stiffness: 260, damping: 28 }}
-            tabIndex={0}
-            role="button"
-            aria-label={`${ui.projectOpenAria} ${project.name}`}
-            onClick={() => setSelectedProject(project)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                setSelectedProject(project);
-              }
-            }}
-          >
-            <span className="project-index">0{index + 1}</span>
-            <div className="project-card-top">
-              <div className="project-logo" aria-hidden="true">
-                {project.logoUrl ? (
-                  <img src={project.logoUrl} alt="" loading="lazy" />
-                ) : (
-                  <span>{project.name.slice(0, 2).toUpperCase()}</span>
-                )}
-              </div>
-              <div className="project-status">
-                {project.source === "github" ? <Github size={15} /> : <GitBranch size={15} />}
-                <span>{project.source === "github" ? ui.githubLive : ui.projectInProgress}</span>
-              </div>
-            </div>
-            <p className="project-type">{project.type}</p>
-            <strong className="project-focus">{project.focus}</strong>
-            <h3>{project.name}</h3>
-            <p>{project.description}</p>
-            <div className="tag-row">
-              {project.tags.slice(0, 3).map((tag) => (
-                <span key={tag}>{tag}</span>
-              ))}
-              {project.tags.length > 3 ? <span>+{project.tags.length - 3}</span> : null}
-            </div>
-            <div className="project-card-footer" aria-hidden="true">
-              <span>{ui.view}</span>
-              <ArrowUpRight size={15} />
-            </div>
-          </motion.article>
-        ))}
-      </div>
-      {!filteredProjects.length ? (
-        <div className="project-empty-state">
-          <strong>{ui.noProjectTitle}</strong>
-          <p>{ui.noProjectText}</p>
-          <button
-            className="secondary-action button-action"
-            type="button"
-            onClick={() => {
-              setProjectQuery("");
-              setActiveProjectTag(ui.allProjects);
-            }}
-          >
-            {ui.reset}
-          </button>
-        </div>
-      ) : null}
-      {selectedProject ? (
-        <ProjectDetailModal project={selectedProject} onClose={() => setSelectedProject(null)} ui={ui} language={language} />
-      ) : null}
+      <AnimatePresence>
+        {selectedProject ? (
+          <ProjectDetailModal
+            key={selectedProject.name}
+            project={selectedProject}
+            onClose={() => setSelectedProject(null)}
+            ui={ui}
+            language={language}
+          />
+        ) : null}
+      </AnimatePresence>
     </RevealSection>
+  );
+}
+
+function ProjectCard({
+  project,
+  featured,
+  ui,
+  language,
+  onOpen,
+}: {
+  project: ProjectItem;
+  featured: boolean;
+  ui: UiCopy;
+  language: Language;
+  onOpen: () => void;
+}) {
+  const tiltRef = useTilt<HTMLElement>(featured ? 3 : 6);
+  const hasFlow = getArchitecture(project.name).length > 0;
+  const cover = project.screenshots?.[0];
+  const showMedia = featured && Boolean(cover);
+  const showFullFlow = featured && !cover && hasFlow;
+
+  return (
+    <article
+      ref={tiltRef}
+      className={`project-card tilt ${featured ? "is-featured" : ""} ${showMedia || showFullFlow ? "has-visual" : ""}`}
+      tabIndex={0}
+      role="button"
+      aria-label={`${ui.projectOpenAria} ${project.name}`}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpen();
+        }
+      }}
+    >
+      <div className="project-card-main">
+        <div className="project-card-head">
+          {project.logoUrl ? (
+            <span className="project-logo" aria-hidden="true">
+              <img src={project.logoUrl} alt="" loading="lazy" />
+            </span>
+          ) : null}
+          <span className="project-type">{project.type}</span>
+          {project.privateRepo ? <LockKeyhole size={16} aria-hidden="true" /> : null}
+          {project.githubUrl || project.source === "github" ? <Github size={17} aria-hidden="true" /> : null}
+        </div>
+        <h3>{project.name}</h3>
+        <p className="project-focus">{project.focus}</p>
+        {featured ? <p className="project-description">{project.description}</p> : null}
+        {!showFullFlow ? (
+          <FlowDiagram projectName={project.name} language={language} variant="compact" label={ui.architectureLabel} />
+        ) : null}
+        <ul className="tag-list" aria-label="Technologies">
+          {project.tags.slice(0, featured ? 6 : 3).map((tag) => (
+            <li key={tag}>{tag}</li>
+          ))}
+        </ul>
+        <span className="project-more" aria-hidden="true">
+          {ui.view} <ChevronRight size={17} />
+        </span>
+      </div>
+      {showMedia && cover ? (
+        <div className="project-card-visual is-media">
+          <img src={cover.url} alt={cover.alt || `${ui.projectPreviewAlt} ${project.name}`} loading="lazy" />
+        </div>
+      ) : null}
+      {showFullFlow ? (
+        <div className="project-card-visual">
+          <FlowDiagram projectName={project.name} language={language} variant="full" label={ui.architectureLabel} />
+        </div>
+      ) : null}
+    </article>
   );
 }
 
@@ -3370,48 +3871,93 @@ function ProjectDetailModal({
   language: Language;
 }) {
   const screenshots = project.screenshots || [];
-  const cover = screenshots[0]?.url || project.logoUrl || "";
+  const cover = screenshots[0]?.url || "";
+  const dialogRef = useRef<HTMLDivElement | null>(null);
 
-  return (
-    <div className="project-modal-backdrop" role="presentation" onMouseDown={onClose}>
+  // Keeps keyboard focus inside the dialog and hands it back to the card on close.
+  useEffect(() => {
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Tab" || !dialogRef.current) return;
+      const focusable = [
+        ...dialogRef.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'),
+      ];
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      previouslyFocused?.focus({ preventScroll: true });
+    };
+  }, []);
+
+  return createPortal(
+    <motion.div
+      className="modal-backdrop"
+      role="presentation"
+      onMouseDown={onClose}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+    >
       <motion.div
-        className="project-modal"
+        ref={dialogRef}
+        className="modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby="project-modal-title"
-        initial={{ opacity: 0, y: 24, scale: 0.98 }}
+        initial={{ opacity: 0, y: 32, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.22 }}
+        exit={{ opacity: 0, y: 16, scale: 0.98 }}
+        transition={{ duration: 0.34, ease: appleEase }}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <button className="modal-close" type="button" onClick={onClose} aria-label={ui.close}>
-          ×
+        <button className="modal-close" type="button" onClick={onClose} aria-label={ui.close} autoFocus>
+          <X size={18} aria-hidden="true" />
         </button>
-        <div className="project-modal-media">
-          {cover ? (
+        {cover ? (
+          <div className="modal-media">
             <img src={cover} alt={screenshots[0]?.alt || `${ui.projectPreviewAlt} ${project.name}`} />
-          ) : (
-            <div className="project-modal-placeholder">{project.name.slice(0, 2).toUpperCase()}</div>
-          )}
-        </div>
-        <div className="project-modal-content">
-          <p className="project-type">{project.type}</p>
+          </div>
+        ) : null}
+        <div className="modal-body">
+          <div className="modal-heading">
+            {project.logoUrl ? (
+              <span className="project-logo" aria-hidden="true">
+                <img src={project.logoUrl} alt="" />
+              </span>
+            ) : null}
+            <p className="project-type">{project.type}</p>
+          </div>
           <h3 id="project-modal-title">{project.name}</h3>
-          <strong>{project.focus}</strong>
-          <p>{project.detail || project.description}</p>
+          <p className="project-focus">{project.focus}</p>
+          <FlowDiagram projectName={project.name} language={language} variant="full" label={ui.architectureLabel} />
+          <p className="modal-detail">{project.detail || project.description}</p>
           {project.source === "github" ? (
-            <div className="github-project-meta modal-meta" aria-label={`Métadonnées GitHub pour ${project.name}`}>
+            <div className="modal-meta" aria-label={`Métadonnées GitHub pour ${project.name}`}>
               {project.githubRepo ? <span>{project.githubRepo}</span> : null}
               {project.githubUpdatedAt ? <span>{ui.updatedLong} {formatRelativeProjectDate(project.githubUpdatedAt, language)}</span> : null}
               <span>{project.githubStars || 0} {(project.githubStars || 0) > 1 ? ui.stars : ui.star}</span>
               <span>{project.githubForks || 0} {(project.githubForks || 0) > 1 ? ui.forks : ui.fork}</span>
             </div>
           ) : null}
-          <div className="tag-row">
+          <ul className="tag-list">
             {project.tags.map((tag) => (
-              <span key={tag}>{tag}</span>
+              <li key={tag}>{tag}</li>
             ))}
-          </div>
+          </ul>
           {screenshots.length > 1 ? (
             <div className="project-gallery" aria-label={ui.projectGalleryAria}>
               {screenshots.slice(1).map((screenshot, index) => (
@@ -3419,26 +3965,37 @@ function ProjectDetailModal({
               ))}
             </div>
           ) : null}
-          <div className="project-modal-actions">
+          <div className="modal-actions">
+            {project.privateRepo && !project.githubUrl ? (
+              <>
+                <a className="button button-primary" href="#contact" onClick={onClose}>
+                  {ui.requestDemo} <ChevronRight size={17} aria-hidden="true" />
+                </a>
+                <span className="private-note">
+                  <LockKeyhole size={15} aria-hidden="true" /> {ui.privateRepoNote}
+                </span>
+              </>
+            ) : null}
             {project.projectUrl ? (
-              <a className="primary-action" href={project.projectUrl} target="_blank" rel="noreferrer">
-                {ui.viewProject} <ArrowUpRight size={18} />
+              <a className="button button-primary" href={project.projectUrl} target="_blank" rel="noreferrer">
+                {ui.viewProject} <ArrowUpRight size={17} aria-hidden="true" />
               </a>
             ) : null}
             {project.apkUrl ? (
-              <a className="secondary-action" href={project.apkUrl} download>
-                {ui.downloadApk} <Download size={18} />
+              <a className="button button-secondary" href={project.apkUrl} download>
+                {ui.downloadApk} <Download size={17} aria-hidden="true" />
               </a>
             ) : null}
             {project.githubUrl && project.githubUrl !== project.projectUrl ? (
-              <a className="secondary-action" href={project.githubUrl} target="_blank" rel="noreferrer">
-                {ui.viewCode} <Github size={18} />
+              <a className={`button ${project.projectUrl ? "button-secondary" : "button-primary"}`} href={project.githubUrl} target="_blank" rel="noreferrer">
+                {ui.viewCode} <Github size={17} aria-hidden="true" />
               </a>
             ) : null}
           </div>
         </div>
       </motion.div>
-    </div>
+    </motion.div>,
+    document.body,
   );
 }
 
@@ -3473,42 +4030,34 @@ function CvSection({ ui }: { ui: UiCopy }) {
   const cvUrl = cvInfo?.url || "/cv.pdf";
 
   return (
-    <RevealSection className="cv-section section" id="cv">
-      <div className="section-heading">
-        <div>
-          <div className="section-kicker">CV</div>
-          <h2>{ui.cvTitle}</h2>
-        </div>
-        <div className="cv-actions">
-          <a className="secondary-action" href={cvUrl} target="_blank" rel="noreferrer">
-            <Eye size={18} /> {ui.cvView}
-          </a>
-          <a className="primary-action" href={cvUrl} download>
-            <Download size={18} /> {ui.cvDownload}
-          </a>
-        </div>
-      </div>
-      <div className="cv-viewer">
-        {cvInfo ? (
-          <div className="cv-empty cv-link-panel">
-            <FileText size={44} />
-            <h3>{ui.cvAvailableTitle}</h3>
-            <p>{ui.cvAvailableText}</p>
+    <RevealSection className="section section-alt" id="cv">
+      <div className="container">
+        <div className="tile cv-card">
+          <div className="cv-icon" aria-hidden="true">
+            <FileText size={28} />
           </div>
-        ) : (
-          <div className="cv-empty">
-            <FileText size={44} />
-            <h3>{ui.cvMissingTitle}</h3>
-            <p>{ui.cvMissingText}</p>
+          <div className="cv-copy">
+            <p className="kicker">{ui.nav.cv}</p>
+            <h2>{ui.cvTitle}</h2>
+            <p>{cvInfo ? ui.cvAvailableText : ui.cvMissingText}</p>
           </div>
-        )}
+          <div className="cv-actions">
+            <a className="button button-secondary" href={cvUrl} target="_blank" rel="noreferrer">
+              <Eye size={17} aria-hidden="true" /> {ui.cvView}
+            </a>
+            <a className="button button-primary" href={cvUrl} download>
+              <Download size={17} aria-hidden="true" /> {ui.cvDownload}
+            </a>
+          </div>
+        </div>
       </div>
     </RevealSection>
   );
 }
 
-function CertificationsSection({ ui }: { ui: UiCopy }) {
+function CertificationsSection({ ui, language }: { ui: UiCopy; language: Language }) {
   const [certificationsInfo, setCertificationsInfo] = useState<CvInfo | null>(null);
+  const stats = getCertificationStats();
 
   useEffect(() => {
     fetch(`/certifications-manifest.json?t=${Date.now()}`)
@@ -3523,82 +4072,129 @@ function CertificationsSection({ ui }: { ui: UiCopy }) {
       });
   }, []);
 
-  const certificationsUrl = certificationsInfo?.url || "/certifications.pdf";
-
   return (
-    <RevealSection className="certifications-section cv-section section" id="certifications">
-      <div className="section-heading">
-        <div>
-          <div className="section-kicker">{ui.certificationsKicker}</div>
-          <h2>{ui.certificationsTitle}</h2>
+    <RevealSection className="section" id="certifications">
+      <div className="container">
+        <SectionHeading
+          kicker={ui.certificationsKicker}
+          title={ui.certificationsTitle}
+          intro={ui.certificationsIntro}
+          action={
+            certificationsInfo ? (
+              <a className="button-link" href={certificationsInfo.url} target="_blank" rel="noreferrer">
+                {ui.certificationsView} <ArrowUpRight size={17} aria-hidden="true" />
+              </a>
+            ) : null
+          }
+        />
+        <dl className="cert-stats" aria-label={ui.certificationsStatsAria}>
+          {(["total", "verifiable", "issuers", "domains"] as const).map((key) => (
+            <div key={key}>
+              <dt>{ui.certificationsStats[key]}</dt>
+              <dd>
+                <CountUp value={stats[key]} />
+              </dd>
+            </div>
+          ))}
+        </dl>
+        <div className="cert-grid">
+          {certificationDomains.map((domain) => {
+            const featured = domain.certifications.filter((certification) => certification.featured);
+            const others = domain.certifications.filter((certification) => !certification.featured);
+            return (
+              <article className="tile cert-card" key={domain.id}>
+                <header>
+                  <h3>{domain.label[language]}</h3>
+                  <span className="cert-count">{domain.certifications.length}</span>
+                </header>
+                <span className="cert-bar" aria-hidden="true">
+                  <i style={{ width: `${(domain.certifications.length / stats.total) * 100}%` }} />
+                </span>
+                <ul className="cert-list">
+                  {featured.map((certification) => (
+                    <CertificationRow key={certification.title} certification={certification} ui={ui} language={language} />
+                  ))}
+                </ul>
+                {others.length ? (
+                  <details className="cert-more">
+                    <summary>
+                      {ui.certificationsMore.replace("{count}", String(others.length))}
+                      <ChevronDown size={16} aria-hidden="true" />
+                    </summary>
+                    <ul className="cert-list">
+                      {others.map((certification) => (
+                        <CertificationRow key={certification.title} certification={certification} ui={ui} language={language} />
+                      ))}
+                    </ul>
+                  </details>
+                ) : null}
+                {domain.proofs.length ? (
+                  <footer className="cert-proofs">
+                    <span>{ui.certificationsProofs}</span>
+                    <div>
+                      {domain.proofs.map((proof) => (
+                        <a key={proof.repo} href={getProofUrl(proof)} target="_blank" rel="noreferrer">
+                          <Github size={13} aria-hidden="true" /> {proof.label}
+                        </a>
+                      ))}
+                    </div>
+                  </footer>
+                ) : null}
+              </article>
+            );
+          })}
         </div>
-        {certificationsInfo ? (
-          <div className="cv-actions">
-            <a className="secondary-action" href={certificationsUrl} target="_blank" rel="noreferrer">
-              <Eye size={18} /> {ui.certificationsView}
-            </a>
-          </div>
-        ) : null}
-      </div>
-      <div className="cv-viewer">
-        {certificationsInfo ? (
-          <div className="cv-empty cv-link-panel">
-            <FileText size={44} />
-            <h3>{ui.certificationsAvailableTitle}</h3>
-            <p>{ui.certificationsAvailableText}</p>
-          </div>
-        ) : (
-          <div className="cv-empty">
-            <FileText size={44} />
-            <h3>{ui.certificationsMissingTitle}</h3>
-            <p>{ui.certificationsMissingText}</p>
-          </div>
-        )}
       </div>
     </RevealSection>
   );
 }
 
+function CertificationRow({ certification, ui, language }: { certification: Certification; ui: UiCopy; language: Language }) {
+  const credentialUrl = getCredentialUrl(certification);
+  // Dates are shown for full programmes only: a wall of single-course dates reads as box-ticking.
+  const issued = certification.kind ? formatIssuedDate(certification.issued, language) : "";
+
+  return (
+    <li>
+      <div>
+        <strong>{certification.title}</strong>
+        <span>
+          {certification.issuer}
+          {issued ? ` · ${issued}` : ""}
+        </span>
+      </div>
+      {credentialUrl ? (
+        <a
+          href={credentialUrl}
+          target="_blank"
+          rel="noreferrer"
+          aria-label={`${ui.certificationsVerify} ${certification.title}`}
+        >
+          {ui.certificationsVerify} <ArrowUpRight size={13} aria-hidden="true" />
+        </a>
+      ) : null}
+    </li>
+  );
+}
+
 function Lab({ content, ui }: { content: SiteContent; ui: UiCopy }) {
   return (
-    <RevealSection className="lab section atelier-section" id="labo">
-      <div className="atelier-heading">
-        <div>
-          <div className="section-kicker">{ui.sectionKickers.lab}</div>
-          <h2>{content.labTitle}</h2>
-          <p>{content.labIntro}</p>
-        </div>
-      </div>
-
-      <div className="atelier-grid">
-        <div className="atelier-terminal-card">
-          <div className="atelier-card-header">
-            <span>{ui.labSession}</span>
-            <strong>{ui.labOs}</strong>
-          </div>
+    <RevealSection className="section" id="labo">
+      <div className="container">
+        <SectionHeading kicker={ui.sectionKickers.lab} title={content.labTitle} intro={content.labIntro} />
+        <div className="lab-grid">
           <TerminalPanel content={content} ui={ui} />
-        </div>
-
-        <div className="atelier-side">
-          <div className="lab-console atelier-console" aria-label={ui.labCycleAria}>
-            <div>
-              <Activity size={16} />
-              <code>watch ideas --iterate</code>
-            </div>
-            <div>
-              <Code2 size={16} />
-              <code>prototype --fast --human</code>
-            </div>
-          </div>
-
-          <div className="lab-list atelier-list">
-            {content.labs.map((item) => (
-              <div key={item}>
-                <Rocket size={18} />
-                <span>{item}</span>
-              </div>
-            ))}
-          </div>
+          <aside className="tile lab-ideas" aria-label={ui.labIdeasTitle}>
+            <h3>{ui.labIdeasTitle}</h3>
+            <ul>
+              {content.labs.map((item) => (
+                <li key={item}>
+                  <Sparkles size={17} aria-hidden="true" />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </aside>
         </div>
       </div>
     </RevealSection>
@@ -3607,27 +4203,41 @@ function Lab({ content, ui }: { content: SiteContent; ui: UiCopy }) {
 
 function Contact({ content, ui }: { content: SiteContent; ui: UiCopy }) {
   return (
-    <RevealSection className="contact section" id="contact">
-      <div>
-        <div className="section-kicker">{ui.sectionKickers.contact}</div>
+    <RevealSection className="section contact" id="contact">
+      <div className="container contact-inner">
+        <p className="kicker">{ui.sectionKickers.contact}</p>
         <h2>{content.contactTitle}</h2>
-        <p>{content.contactText}</p>
-      </div>
-      <div className="contact-actions">
-        <a href={`mailto:${content.contactLinks.email}`}>
-          <Mail size={18} /> Email
-        </a>
-        <a href={content.contactLinks.github} target="_blank" rel="noreferrer">
-          <Github size={18} /> GitHub
-        </a>
-        <a href={content.contactLinks.linkedin} target="_blank" rel="noreferrer">
-          <Linkedin size={18} /> LinkedIn
-        </a>
-        <a href={content.contactLinks.whatsapp} target="_blank" rel="noreferrer">
-          <MessageCircle size={18} /> WhatsApp
-        </a>
+        <p className="section-intro">{content.contactText}</p>
+        <div className="contact-actions">
+          <a className="button button-primary" href={`mailto:${content.contactLinks.email}`}>
+            <Mail size={17} aria-hidden="true" /> Email
+          </a>
+          <a className="button button-secondary" href={content.contactLinks.linkedin} target="_blank" rel="noreferrer">
+            <Linkedin size={17} aria-hidden="true" /> LinkedIn
+          </a>
+          <a className="button button-secondary" href={content.contactLinks.github} target="_blank" rel="noreferrer">
+            <Github size={17} aria-hidden="true" /> GitHub
+          </a>
+          <a className="button button-secondary" href={content.contactLinks.whatsapp} target="_blank" rel="noreferrer">
+            <MessageCircle size={17} aria-hidden="true" /> WhatsApp
+          </a>
+        </div>
       </div>
     </RevealSection>
+  );
+}
+
+function Footer({ ui }: { ui: UiCopy }) {
+  return (
+    <footer className="site-footer">
+      <div className="container footer-inner">
+        <p>© {new Date().getFullYear()} Victoire Sawadogo. {ui.footerNote}</p>
+        <nav aria-label={ui.footerAria}>
+          <a href="#top">{ui.backToTop}</a>
+          <a href="/login">{ui.adminLink}</a>
+        </nav>
+      </div>
+    </footer>
   );
 }
 
@@ -3640,60 +4250,17 @@ function RevealSection({
   className: string;
   id?: string;
 }) {
-  const viewLabel = id ? sectionViewLabels[id] || id : "view";
-  const worldZone = id ? worldZoneLabels[id] : null;
-
   return (
     <motion.section
       className={className}
       id={id}
-      initial={{ opacity: 0, y: 18 }}
+      initial={{ opacity: 0, y: 28 }}
       whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "-60px" }}
-      transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
+      viewport={{ once: true, amount: 0.05 }}
+      transition={{ duration: 0.7, ease: appleEase }}
     >
-      {id ? (
-        <div className="section-rail" aria-hidden="true">
-          <span>{viewLabel}</span>
-          <strong>{id}</strong>
-        </div>
-      ) : null}
-      {worldZone ? <span className="world-zone-name">{worldZone}</span> : null}
       {children}
     </motion.section>
-  );
-}
-
-const sectionViewLabels: Record<string, string> = {
-  profil: "profil.log",
-  identite: "identity.core",
-  parcours: "timeline.trace",
-  stack: "stack.map",
-  projets: "projects.dir",
-  cv: "cv.preview",
-  labo: "lab.queue",
-  contact: "contact.route",
-};
-
-const worldZoneLabels: Record<string, string> = {
-  profil: "Vision",
-  identite: "Philosophie",
-  parcours: "Parcours",
-  stack: "Outils",
-  projets: "Systèmes",
-  cv: "CV",
-  certifications: "Repères",
-  labo: "Idées",
-  contact: "Ensemble",
-};
-
-function AmbientBackground() {
-  return (
-    <div className="ambient" aria-hidden="true">
-      <div className="woven-pattern" />
-      <div className="light-field one" />
-      <div className="light-field two" />
-    </div>
   );
 }
 

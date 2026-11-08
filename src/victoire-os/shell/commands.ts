@@ -520,15 +520,18 @@ export function resolveShellCommand(
         "|   |-- Dockerfile.api",
         "|   `-- compose.yaml",
         "|-- projects/",
-        "|   |-- elegantstyle.md",
-        "|   |-- baobab-monbaobab.md",
-        "|   |-- burkinaloc.md",
-        "|   `-- cotisations.md",
+        "|   |-- sevenos.md",
+        "|   |-- cocomarket.md",
+        "|   |-- simplon-device-manager.md",
+        "|   |-- crypted-message.md",
+        "|   |-- monbaobab.md",
+        "|   |-- simplon-procurement.md",
+        "|   `-- elegantstyle.md",
         "|-- stack/",
-        "|   |-- frontend.txt",
-        "|   |-- mobile.txt",
-        "|   |-- backend.txt",
-        "|   `-- devops-it.txt",
+        "|   |-- langages.txt",
+        "|   |-- web-and-mobile.txt",
+        "|   |-- donnees-and-messagerie.txt",
+        "|   `-- cloud-devops-and-systemes.txt",
         "|-- /etc/victoire/",
         "|   |-- skills.conf",
         "|   `-- sandbox.policy",
@@ -552,7 +555,7 @@ export function resolveShellCommand(
         "    VS    VS      OS: Atelier Portfolio Edition",
         "   VS CODE VS     Kernel: React + TypeScript + Human UX",
         "    VS    VS      Shell: immersive-sandbox",
-        "      VSSV        Focus: Fullstack, Mobile, IA, Culture",
+        "      VSSV        Focus: Systèmes distribués, Cloud, Sécurité, Full-stack",
         "        VS        Status: building useful products",
       ],
     };
@@ -566,7 +569,7 @@ export function resolveShellCommand(
     return {
       output: [
         "USER=victoire",
-        "ROLE=fullstack_mobile_developer",
+        "ROLE=software_systems_engineer",
         "MISSION=build_human_products",
         "REGION=africa",
         "SHELL=/bin/portfolio",
@@ -666,7 +669,7 @@ export function resolveShellCommand(
     const currentProject = content.projects[0];
     return {
       output: [
-        content.professionalTimeline[0]?.title || "Developpeur Fullstack & Mobile",
+        content.professionalTimeline[0]?.title || "Ingénieur logiciel & systèmes",
         currentProject
           ? `Focus produit: ${currentProject.name} - ${currentProject.description}`
           : "Focus produit: construire des experiences utiles et humaines.",

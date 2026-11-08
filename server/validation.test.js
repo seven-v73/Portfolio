@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { projectInputSchema } from "./validation.js";
+import { enLocale } from "../src/i18n/en.ts";
+import { frLocale } from "../src/i18n/fr.ts";
+import { projectInputSchema, siteContentSchema } from "./validation.js";
 
 describe("projectInputSchema", () => {
   it("normalizes bare public URLs and keeps local asset paths", () => {
@@ -62,5 +64,27 @@ describe("projectInputSchema", () => {
         tags: Array.from({ length: 13 }, (_, index) => `tag-${index}`),
       }),
     ).toThrow();
+  });
+});
+
+describe("siteContentSchema", () => {
+  it.each([
+    ["fr", frLocale.content],
+    ["en", enLocale.content],
+  ])("accepts the default %s content and keeps what the site relies on", (_language, content) => {
+    const parsed = siteContentSchema.parse(content);
+
+    expect(parsed.projects.find((project) => project.name === "SevenOS")).toMatchObject({ privateRepo: true, githubUrl: "" });
+    expect(parsed.cv.projects).toContain("SevenOS");
+  });
+
+  it("drops blank resume list rows instead of rejecting the save", () => {
+    const parsed = siteContentSchema.parse({
+      ...frLocale.content,
+      cv: { ...frLocale.content.cv, languages: ["Français", "", "  "], interests: [""] },
+    });
+
+    expect(parsed.cv.languages).toEqual(["Français"]);
+    expect(parsed.cv.interests).toEqual([]);
   });
 });

@@ -24,6 +24,28 @@ const githubProjectTopics = (process.env.GITHUB_PROJECT_TOPICS || "")
   .map((topic) => topic.trim().toLowerCase())
   .filter(Boolean);
 
+// Course exercises, duplicates and copies of third-party projects hidden from the public project list.
+const defaultExcludedRepos = [
+  "snack",
+  "Linux-text-book-part-1",
+  "simplon-services_back",
+  "simplon-services_front",
+  "simplon-procurement-frontend",
+  "smart-clinic-management-system",
+  "EventEaseApp",
+  "Introduction-to-Git-and-GitHub",
+  "Learning_C",
+  "Learning_python",
+  "algorithmic-thinking",
+  "ThreeJS-Learning",
+  "blanchard_portfolio",
+].join(",");
+
+const githubExcludedRepos = (process.env.GITHUB_EXCLUDED_REPOS ?? defaultExcludedRepos)
+  .split(",")
+  .map((repo) => repo.trim().toLowerCase())
+  .filter(Boolean);
+
 export const config = {
   isProduction,
   port: Number(process.env.PORT || 4000),
@@ -36,5 +58,6 @@ export const config = {
   githubUsername: process.env.GITHUB_USERNAME || "seven-v73",
   githubToken: process.env.GITHUB_TOKEN || "",
   githubProjectTopics,
+  githubExcludedRepos,
   githubCacheTtlMs: Number(process.env.GITHUB_CACHE_TTL_MS || 15 * 60 * 1000),
 };
